@@ -20,14 +20,19 @@ fn main() -> anyhow::Result<()> {
 
     let model = candle_onnx::read_file(&onnx_path)?;
     let refs = candle_core::safetensors::load(&ref_path, &device)?;
-    let image = refs.get("image").expect("reference must contain 'image'").clone();
     let expected = refs.get("out0").expect("reference must contain 'out0'").clone();
 
-    // The single graph input feeds the image tensor.
+    // Feed every graph input from the reference tensors (in0, in1, ...), by position.
     let graph = model.graph.as_ref().expect("graph");
-    let input_name = graph.input[0].name.clone();
     let mut inputs: HashMap<String, Tensor> = HashMap::new();
-    inputs.insert(input_name, image);
+    for (i, gi) in graph.input.iter().enumerate() {
+        let key = format!("in{i}");
+        let t = refs
+            .get(&key)
+            .unwrap_or_else(|| panic!("reference missing {key} for graph input {}", gi.name))
+            .clone();
+        inputs.insert(gi.name.clone(), t);
+    }
 
     let outputs = candle_onnx::simple_eval(&model, inputs)?;
     // out0 corresponds to the first graph output.

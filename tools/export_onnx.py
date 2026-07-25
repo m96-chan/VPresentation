@@ -32,33 +32,42 @@ REF_DIR.mkdir(parents=True, exist_ok=True)
 
 torch.manual_seed(0)
 
-# (loader_name, weight_file, input_shape) per network.
+# (loader_name, weight_file, [input_shapes...]) per network.
+# Input shapes/order match FiveStepPoserComputationProtocol.compute_output.
 NETWORKS = {
-    "eyebrow_decomposer": ("load_eyebrow_decomposer", "eyebrow_decomposer.pt", (1, 4, 128, 128)),
+    "eyebrow_decomposer": ("load_eyebrow_decomposer", "eyebrow_decomposer.pt",
+                           [(1, 4, 128, 128)]),
+    "eyebrow_morphing_combiner": ("load_eyebrow_morphing_combiner", "eyebrow_morphing_combiner.pt",
+                                  [(1, 4, 128, 128), (1, 4, 128, 128), (1, 12)]),
+    "face_morpher": ("load_face_morpher", "face_morpher.pt",
+                     [(1, 4, 192, 192), (1, 27)]),
+    "body_morpher": ("load_morpher_00", "body_morpher.pt",
+                     [(1, 4, 256, 256), (1, 6)]),
+    "upscaler": ("load_upscaler_02", "upscaler.pt",
+                 [(1, 4, 512, 512), (1, 4, 512, 512), (1, 2, 512, 512), (1, 6)]),
 }
 
 
 def export_one(name: str):
     from tha4.poser.modes import mode_07
-    loader_name, weight_file, in_shape = NETWORKS[name]
+    loader_name, weight_file, in_shapes = NETWORKS[name]
     loader = getattr(mode_07, loader_name)
     module = loader(str(WEIGHTS / weight_file))
     module.eval()
 
-    dummy = torch.rand(*in_shape, dtype=torch.float32)
+    dummies = [torch.rand(*s, dtype=torch.float32) for s in in_shapes]
     with torch.no_grad():
-        outputs = module(dummy)
-    if isinstance(outputs, (list, tuple)):
-        out0 = outputs[0]
-    else:
-        out0 = outputs
+        outputs = module(*dummies)
+    out_list = outputs if isinstance(outputs, (list, tuple)) else [outputs]
+    out0 = out_list[0]
 
+    input_names = [f"in{i}" for i in range(len(dummies))]
     onnx_path = ONNX_DIR / f"{name}.onnx"
     torch.onnx.export(
-        module, (dummy,), str(onnx_path),
-        input_names=["image"],
-        output_names=[f"out{i}" for i in range(len(outputs) if isinstance(outputs, (list, tuple)) else 1)],
-        opset_version=16,  # GridSample requires >=16
+        module, tuple(dummies), str(onnx_path),
+        input_names=input_names,
+        output_names=[f"out{i}" for i in range(len(out_list))],
+        opset_version=18,  # dynamo exporter: emits GridSample, decomposes affine_grid
         do_constant_folding=True,
     )
     # candle-onnx reads initializers inline only; collapse any external-data
@@ -68,10 +77,11 @@ def export_one(name: str):
     data_file = onnx_path.with_suffix(".onnx.data")
     if data_file.exists():
         data_file.unlink()
-    # Save reference input + first output for candle numeric parity tests.
-    save_file({"image": dummy.contiguous(), "out0": out0.contiguous()},
-              str(REF_DIR / f"{name}.safetensors"))
-    print(f"[export] {name}: onnx -> {onnx_path.name}, ref out0 shape {tuple(out0.shape)}")
+    # Save reference inputs + first output for candle numeric parity tests.
+    ref = {f"in{i}": d.contiguous() for i, d in enumerate(dummies)}
+    ref["out0"] = out0.contiguous()
+    save_file(ref, str(REF_DIR / f"{name}.safetensors"))
+    print(f"[export] {name}: onnx -> {onnx_path.name}, {len(dummies)} inputs, out0 {tuple(out0.shape)}")
 
 
 def main():
