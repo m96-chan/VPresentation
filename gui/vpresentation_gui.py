@@ -12,6 +12,8 @@ import os
 import sys
 import subprocess
 import tempfile
+import threading
+from collections import deque
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
@@ -76,25 +78,33 @@ class Engine:
 
 
 class RenderWorker(QThread):
-    """Renders poses off the UI thread. Coalesces to the latest request."""
+    """Renders poses off the UI thread via a queue.
+
+    'live' requests coalesce (only the newest matters); distinct-tag requests
+    (e.g. the two auto-blink frames) are all kept so they both render.
+    """
     done = Signal(str, object)  # path, tag
 
     def __init__(self, engine: Engine):
         super().__init__()
         self.engine = engine
-        self._pending = None
+        self._queue = deque()
+        self._lock = threading.Lock()
         self._running = True
 
     def request(self, pose, tag):
-        self._pending = (list(pose), tag)
+        with self._lock:
+            if tag == "live":
+                self._queue = deque(j for j in self._queue if j[1] != "live")
+            self._queue.append((list(pose), tag))
 
     def run(self):
         while self._running:
-            job = self._pending
+            with self._lock:
+                job = self._queue.popleft() if self._queue else None
             if job is None:
                 self.msleep(20)
                 continue
-            self._pending = None
             pose, tag = job
             try:
                 path = self.engine.render(pose)
