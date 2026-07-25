@@ -25,7 +25,8 @@ def _resize(t, size):
 
 class _Net:
     def __init__(self, path):
-        self.m = ct.models.MLModel(str(path))
+        # ALL lets CoreML also use the Neural Engine where ops allow.
+        self.m = ct.models.MLModel(str(path), compute_units=ct.ComputeUnit.ALL)
         self.ins = [i.name for i in self.m.get_spec().description.input]
         self.outs = [o.name for o in self.m.get_spec().description.output]
 
@@ -43,16 +44,18 @@ class CoreMLTeacherPoser:
         self.body = _Net(d / "body_morpher.mlpackage")
         self.up = _Net(d / "upscaler.mlpackage")
         self.image = load_thaa_image(image_path)  # (1,4,512,512)
+        # eyebrow decomposer only depends on the (fixed) character image -> cache it.
+        self._eyebrow_layer, self._bg_layer = self.ebd(self.image[:, :, 64:192, 192:320].copy())
 
-    def pose(self, pose):
+    def pose(self, pose, fast=False):
+        """fast=True skips the 512 upscaler (bilinear-upscales the body morpher's
+        256 output instead) — ~2x faster, slightly softer detail."""
         pose = np.asarray(pose, np.float32)
         eb = pose[0:12][None]
         face = pose[12:39][None]
         rot = pose[39:45][None]
         img = self.image
-
-        # 1. eyebrow decomposer on the 128 eyebrow crop -> (eyebrow_layer, bg_layer)
-        eyebrow_layer, bg_layer = self.ebd(img[:, :, 64:192, 192:320].copy())
+        eyebrow_layer, bg_layer = self._eyebrow_layer, self._bg_layer
         # 2. combiner -> eyebrow_morphed (EYEBROW_IMAGE_NO_COMBINE_ALPHA)
         eyebrow_morphed = self.comb(bg_layer, eyebrow_layer, eb)[0]
         # 3. face morpher: 192 crop with eyebrow pasted at (32,32)
@@ -64,10 +67,13 @@ class CoreMLTeacherPoser:
         face_full[:, :, 32:224, 160:352] = face_morphed
         # 5-6. body morpher at 256 -> merged, grid_change
         merged, grid_change = self.body(_resize(face_full, 256), rot)
+        if fast:
+            # skip the heavy 512 upscaler; bilinear-upscale the posed 256 image.
+            return _resize(merged, 512)
         coarse_posed = _resize(merged, 512)
         coarse_grid = _resize(grid_change, 512)
         # 7. upscaler -> final 512 image
         return self.up(face_full, coarse_posed, coarse_grid, rot)[0]
 
-    def render_rgba(self, pose):
-        return to_rgba_uint8(self.pose(pose))
+    def render_rgba(self, pose, fast=False):
+        return to_rgba_uint8(self.pose(pose, fast=fast))

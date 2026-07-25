@@ -63,13 +63,14 @@ class TeacherCoreMLBackend:
     """In-process CoreML *teacher* poser -> HWC RGBA uint8. Poses any 512
     image (e.g. char.png) without distillation, ~2-3 fps."""
 
-    def __init__(self, image_path):
+    def __init__(self, image_path, fast=True):
         from coreml_teacher_poser import CoreMLTeacherPoser
         self.poser = CoreMLTeacherPoser(image_path)
-        self.device = "coreml-teacher"
+        self.fast = fast  # skip the 512 upscaler for ~1.6x speed
+        self.device = "coreml-teacher" + ("-fast" if fast else "")
 
     def render(self, pose):
-        return self.poser.render_rgba(pose)
+        return self.poser.render_rgba(pose, fast=self.fast)
 
     def close(self):
         pass
@@ -121,6 +122,9 @@ def composite_on_bg(rgba, bg=(40, 30, 30)):
 def main():
     args = sys.argv[1:]
     teacher_image = None
+    teacher_fast = "--full" not in args
+    if "--full" in args:
+        args.remove("--full")
     use_serve = "--serve" in args
     if "--serve" in args:
         args.remove("--serve")
@@ -134,7 +138,7 @@ def main():
     # Pick backend: CoreML if available and not forced to serve.
     if teacher_image:
         if not use_serve and (REPO / "data/tha4/coreml").exists():
-            backend = TeacherCoreMLBackend(teacher_image)  # ~2-3 fps, any char
+            backend = TeacherCoreMLBackend(teacher_image, fast=teacher_fast)  # any char
         else:
             backend = ServeBackend(teacher_image=teacher_image)  # Rust, ~8s/frame
     elif not use_serve and (Path(char_dir) / "coreml").exists():
