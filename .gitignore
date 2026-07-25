@@ -32,3 +32,13 @@ __pycache__/
 
 .venv-coreml/
 *.mlpackage
+
+# Distillation env / training data & intermediates (large; re-fetch via DISTILL.md)
+.venv-distill/
+/data/pose_dataset.pt
+/data/distill_examples/*/checkpoint/
+/data/distill_examples/*/snapshot/
+/data/distill_examples/*/sample_outputs/
+/data/distill_examples/*/face_morpher/
+/data/distill_examples/*/body_morpher/
+/data/distill_examples/*/character_model/
