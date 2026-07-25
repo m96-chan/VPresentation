@@ -48,7 +48,23 @@ NETWORKS = {
 }
 
 
+def apply_export_patches():
+    """Make THA4 forward passes exportable by the dynamo ONNX exporter.
+
+    SIREN's `omega_0 * linear(x)` is a tensor*python-float (aten.mul.Scalar),
+    which the dynamo exporter can't lower. Rewrite it as tensor*tensor.
+    """
+    from tha4.nn.siren.vanilla.siren import SineLinearLayer
+
+    def sine_forward(self, x):
+        omega = torch.as_tensor(self.omega_0, dtype=x.dtype, device=x.device)
+        return torch.sin(self.linear(x) * omega)
+
+    SineLinearLayer.forward = sine_forward
+
+
 def export_one(name: str):
+    apply_export_patches()
     from tha4.poser.modes import mode_07
     loader_name, weight_file, in_shapes = NETWORKS[name]
     loader = getattr(mode_07, loader_name)
@@ -67,8 +83,9 @@ def export_one(name: str):
         module, tuple(dummies), str(onnx_path),
         input_names=input_names,
         output_names=[f"out{i}" for i in range(len(out_list))],
-        opset_version=18,  # dynamo exporter: emits GridSample, decomposes affine_grid
+        opset_version=20,  # legacy exporter: affine_grid needs >=20; handles SIREN scalar-mul
         do_constant_folding=True,
+        dynamo=False,
     )
     # candle-onnx reads initializers inline only; collapse any external-data
     # tensors back into a single self-contained .onnx file.
