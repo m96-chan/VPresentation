@@ -5,6 +5,8 @@
 
 use candle_core::Device;
 
+pub mod image_io;
+pub mod poser;
 pub mod warp;
 
 /// Pick the best available compute device: Metal (Apple GPU) if compiled with

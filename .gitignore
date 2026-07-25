@@ -23,3 +23,6 @@ __pycache__/
 .DS_Store
 /data/tha4/onnx/
 /data/tha4/reference/
+
+# THA4 sample character images (CC BY-NC) — fetch separately
+/data/images/lambda_*.png

@@ -17,3 +17,4 @@ candle-core = { path = "third_party/candle/candle-core" }
 candle-nn = { path = "third_party/candle/candle-nn" }
 candle-onnx = { path = "third_party/candle/candle-onnx" }
 anyhow = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
