@@ -41,3 +41,7 @@ path = "src/bin/pose_image.rs"
 [[bin]]
 name = "serve"
 path = "src/bin/serve.rs"
+
+[[bin]]
+name = "bench-student"
+path = "src/bin/bench_student.rs"

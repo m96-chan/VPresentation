@@ -26,3 +26,4 @@ __pycache__/
 
 # THA4 sample character images (CC BY-NC) — fetch separately
 /data/images/lambda_*.png
+/data/character_models/

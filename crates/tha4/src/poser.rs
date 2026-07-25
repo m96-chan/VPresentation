@@ -122,6 +122,46 @@ impl Poser {
     }
 }
 
+/// THA4 *student* character-model poser (mode_14): fast, per-character, 2 nets.
+/// `face_morpher(pose[0..39]) -> face(128)`, composite into the character image,
+/// `body_morpher(image, pose) -> posed image(512)`.
+pub struct StudentPoser {
+    face_morpher: ModelProto,
+    body_morpher: ModelProto,
+    device: Device,
+}
+
+impl StudentPoser {
+    /// Load from `<char_dir>/onnx/student_{face,body}_morpher.onnx`.
+    pub fn load(char_dir: &str, device: Device) -> anyhow::Result<Self> {
+        let read = |n: &str| candle_onnx::read_file(format!("{char_dir}/onnx/{n}.onnx"));
+        Ok(Self {
+            face_morpher: read("student_face_morpher")?,
+            body_morpher: read("student_body_morpher")?,
+            device,
+        })
+    }
+
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub fn pose(&self, image: &Tensor, pose: &[f32]) -> anyhow::Result<Tensor> {
+        anyhow::ensure!(pose.len() == NUM_POSE_PARAMS, "pose must be {NUM_POSE_PARAMS} long");
+        let dev = &self.device;
+        let face_pose = Tensor::from_vec(pose[0..39].to_vec(), (1, 39), dev)?;
+        let full_pose = Tensor::from_vec(pose.to_vec(), (1, NUM_POSE_PARAMS), dev)?;
+
+        // face morpher generates the morphed face (128x128) from pose alone.
+        let face = Poser::run(&self.face_morpher, &[face_pose])?[0].clone();
+        // composite it into the character image at center (256, 144).
+        let composited = place(image, &face, 144 - 64, 256 - 64)?;
+        // body morpher warps/poses the whole 512 image.
+        let out = Poser::run(&self.body_morpher, &[composited, full_pose])?;
+        Ok(out[0].clone())
+    }
+}
+
 /// Crop a square `size`x`size` region at (row, col) from `(1, C, H, W)`.
 fn crop(x: &Tensor, row: usize, col: usize, size: usize) -> anyhow::Result<Tensor> {
     Ok(x.narrow(2, row, size)?.narrow(3, col, size)?.contiguous()?)
