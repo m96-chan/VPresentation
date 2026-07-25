@@ -29,3 +29,6 @@ __pycache__/
 /data/character_models/
 /data/thirdparty/
 /third_party/tha4_src/
+
+.venv-coreml/
+*.mlpackage
