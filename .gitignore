@@ -21,3 +21,5 @@ __pycache__/
 
 # macOS
 .DS_Store
+/data/tha4/onnx/
+/data/tha4/reference/

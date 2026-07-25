@@ -15,4 +15,5 @@ repository = "https://github.com/m96-chan/VPresentation"
 # vendored as a submodule at third_party/candle so we can add ops (e.g. grid_sample).
 candle-core = { path = "third_party/candle/candle-core" }
 candle-nn = { path = "third_party/candle/candle-nn" }
+candle-onnx = { path = "third_party/candle/candle-onnx" }
 anyhow = "1"
