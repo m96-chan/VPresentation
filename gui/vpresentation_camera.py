@@ -59,6 +59,22 @@ class CoreMLBackend:
         pass
 
 
+class TeacherCoreMLBackend:
+    """In-process CoreML *teacher* poser -> HWC RGBA uint8. Poses any 512
+    image (e.g. char.png) without distillation, ~2-3 fps."""
+
+    def __init__(self, image_path):
+        from coreml_teacher_poser import CoreMLTeacherPoser
+        self.poser = CoreMLTeacherPoser(image_path)
+        self.device = "coreml-teacher"
+
+    def render(self, pose):
+        return self.poser.render_rgba(pose)
+
+    def close(self):
+        pass
+
+
 class ServeBackend:
     """Rust candle serve engine -> HWC RGBA uint8 (via PNG)."""
 
@@ -117,7 +133,10 @@ def main():
 
     # Pick backend: CoreML if available and not forced to serve.
     if teacher_image:
-        backend = ServeBackend(teacher_image=teacher_image)
+        if not use_serve and (REPO / "data/tha4/coreml").exists():
+            backend = TeacherCoreMLBackend(teacher_image)  # ~2-3 fps, any char
+        else:
+            backend = ServeBackend(teacher_image=teacher_image)  # Rust, ~8s/frame
     elif not use_serve and (Path(char_dir) / "coreml").exists():
         backend = CoreMLBackend(char_dir)
     else:
