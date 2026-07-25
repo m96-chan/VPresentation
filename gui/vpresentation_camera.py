@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import types
+import threading
 import subprocess
 import tempfile
 from pathlib import Path
@@ -111,6 +112,50 @@ class ServeBackend:
             pass
 
 
+class Tracker(threading.Thread):
+    """Runs webcam capture + MediaPipe face tracking on its own thread, so
+    rendering never waits on tracking. Exposes the latest 45-dim pose."""
+
+    def __init__(self, landmarker, converter):
+        super().__init__(daemon=True)
+        self.landmarker = landmarker
+        self.converter = converter
+        self.cap = cv2.VideoCapture(0)
+        self._pose = [0.0] * 45
+        self._lock = threading.Lock()
+        self._running = self.cap.isOpened()
+        self.opened = self.cap.isOpened()
+        self._t0 = time.time()
+
+    def run(self):
+        while self._running:
+            ok, frame = self.cap.read()
+            if not ok:
+                continue
+            rgb = cv2.flip(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 1)
+            small = cv2.resize(rgb, (256, 192))
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(small))
+            res = self.landmarker.detect_for_video(mp_image, int((time.time() - self._t0) * 1000))
+            if res.face_blendshapes:
+                bs = {c.category_name: c.score for c in res.face_blendshapes[0]}
+                xform = (np.array(res.facial_transformation_matrixes[0], np.float32)
+                         if res.facial_transformation_matrixes else np.eye(4, np.float32))
+                try:
+                    p = self.converter.convert(MediaPipeFacePose(bs, xform))
+                    with self._lock:
+                        self._pose = p
+                except Exception as e:
+                    print("convert error:", e, file=sys.stderr)
+
+    def pose(self):
+        with self._lock:
+            return list(self._pose)
+
+    def stop(self):
+        self._running = False
+        self.cap.release()
+
+
 def composite_on_bg(rgba, bg=(40, 30, 30)):
     """HWC RGBA uint8 -> BGR uint8 over a solid background (for cv2 display)."""
     rgb = rgba[:, :, :3].astype(np.float32)
@@ -156,42 +201,26 @@ def main():
         output_face_blendshapes=True, output_facial_transformation_matrixes=True, num_faces=1)
     landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
 
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
+    # Face tracking runs on its own thread so rendering never blocks on it;
+    # the render rate becomes the effective fps.
+    tracker = Tracker(landmarker, converter)
+    if not tracker.opened:
         sys.exit("cannot open webcam (grant camera permission to the terminal)")
+    tracker.start()
 
-    last_pose = [0.0] * 45
-    t_start = time.time()
     fps_t, fps_n = time.time(), 0
     try:
         while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            rgb = cv2.flip(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 1)
-            small = cv2.resize(rgb, (256, 192))
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(small))
-            result = landmarker.detect_for_video(mp_image, int((time.time() - t_start) * 1000))
-            if result.face_blendshapes:
-                bs = {c.category_name: c.score for c in result.face_blendshapes[0]}
-                xform = (np.array(result.facial_transformation_matrixes[0], np.float32)
-                         if result.facial_transformation_matrixes else np.eye(4, np.float32))
-                try:
-                    last_pose = converter.convert(MediaPipeFacePose(bs, xform))
-                except Exception as e:
-                    print("convert error:", e, file=sys.stderr)
-
-            disp = composite_on_bg(backend.render(last_pose))
+            disp = composite_on_bg(backend.render(tracker.pose()))
             cv2.imshow("VPresentation (ESC/q)", disp)
-
             fps_n += 1
             if time.time() - fps_t > 2.0:
-                print(f"[camera] {fps_n / (time.time() - fps_t):.1f} fps")
+                print(f"[camera] {fps_n / (time.time() - fps_t):.1f} fps (render)")
                 fps_t, fps_n = time.time(), 0
             if cv2.waitKey(1) & 0xFF in (27, ord("q")):
                 break
     finally:
-        cap.release()
+        tracker.stop()
         cv2.destroyAllWindows()
         backend.close()
 
