@@ -5,6 +5,8 @@
 
 use candle_core::Device;
 
+pub mod warp;
+
 /// Pick the best available compute device: Metal (Apple GPU) if compiled with
 /// the `metal` feature and a Metal device is present, otherwise CPU.
 ///
