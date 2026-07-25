@@ -54,7 +54,15 @@ impl Poser {
         for (gi, t) in graph.input.iter().zip(inputs.iter()) {
             map.insert(gi.name.clone(), t.clone());
         }
+        let timed = std::env::var_os("THA4_TIME").is_some();
+        let t0 = timed.then(std::time::Instant::now);
         let out = candle_onnx::simple_eval(model, map)?;
+        if let Some(t0) = t0 {
+            if let Some(first) = graph.output.first().and_then(|o| out.get(&o.name)) {
+                let _ = first.sum_all().and_then(|s| s.to_scalar::<f32>()); // sync
+            }
+            eprintln!("[pose]   {} took {:?}", graph.name, t0.elapsed());
+        }
         let mut result = Vec::with_capacity(graph.output.len());
         for o in graph.output.iter() {
             result.push(

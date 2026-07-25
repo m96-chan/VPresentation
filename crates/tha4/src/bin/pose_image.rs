@@ -25,11 +25,14 @@ fn main() -> anyhow::Result<()> {
     pose[41] = 0.2; // neck_z
     pose[44] = 0.6; // breathing
 
-    let t0 = std::time::Instant::now();
-    let posed = poser.pose(&image, &pose)?;
-    // Force evaluation/readback so timing is real.
-    let _ = posed.sum_all()?.to_scalar::<f32>()?;
-    println!("[pose] pose() took {:?}", t0.elapsed());
+    let mut posed = poser.pose(&image, &pose)?;
+    let _ = posed.sum_all()?.to_scalar::<f32>()?; // warm up (shader compile)
+    for i in 0..3 {
+        let t0 = std::time::Instant::now();
+        posed = poser.pose(&image, &pose)?;
+        let _ = posed.sum_all()?.to_scalar::<f32>()?;
+        println!("[pose] warm run {i}: {:?}", t0.elapsed());
+    }
 
     if let Some(parent) = std::path::Path::new(&output).parent() {
         std::fs::create_dir_all(parent).ok();
