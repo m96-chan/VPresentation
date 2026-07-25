@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/tha4"]
+
+# Exclude the vendored candle fork's own workspace from ours.
+exclude = ["third_party/candle"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/m96-chan/VPresentation"
+
+[workspace.dependencies]
+# Custom candle fork (github.com/m96-chan/candle, branch `avatacam`),
+# vendored as a submodule at third_party/candle so we can add ops (e.g. grid_sample).
+candle-core = { path = "third_party/candle/candle-core" }
+candle-nn = { path = "third_party/candle/candle-nn" }
+anyhow = "1"

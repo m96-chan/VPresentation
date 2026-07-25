@@ -107,6 +107,33 @@ VTuber がプレゼンをしているかのような配信映像を作れるツ�
 
 ---
 
+## 🛠️ 開発（THA4 エンジン）
+
+キャラクターアニメーションは、[m96-chan/candle](https://github.com/m96-chan/candle)
+フォーク（`avatacam` ブランチ）上に **Rust + candle + Metal** で実装する。
+Apple Silicon (Metal) / NVIDIA (CUDA) / CPU を同一コードで狙う。
+
+```bash
+# 1. candle フォークを取得（submodule）
+git submodule update --init --recursive
+
+# 2. THA4 の学習済みモデルを取得（~610MB, CC BY-NC 4.0。リポジトリには含めない）
+./tools/fetch_weights.sh
+
+# 3. candle + Metal が動くことを確認（Phase 0 スモークテスト）
+cargo run -p tha4 --bin metal-smoke
+cargo test -p tha4
+```
+
+### 実装フェーズ（issue #4）
+- [x] **Phase 0**: 基盤 — candle フォーク接続 / Metal 実行確認 / weights 取得
+- [ ] **Phase 1**: `grid_sample` / `affine_grid` op を candle フォークへ追加
+- [ ] **Phase 2**: 5 ネットワークを移植（eyebrow_decomposer → eyebrow_morphing_combiner → face_morpher → body_morpher → upscaler）
+- [ ] **Phase 3**: パイプライン結合 + `char.png` 前処理 + まばたき/呼吸ループ → アニメーション
+
+> THA4 の general poser は 5 つのネットワークからなり、`grid_sample` による
+> ワープを用いる。candle には未実装のため段階的に移植する。
+
 ## 🗺️ ロードマップ
 
 1. **PoC** — THA4 で立ち絵を動かし、画面表示する

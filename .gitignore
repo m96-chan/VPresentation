@@ -1,0 +1,23 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# THA4 model weights — large (610MB) and CC BY-NC 4.0; do NOT commit.
+# Download separately (see README / tools/fetch_weights.sh).
+/data/tha4/*.zip
+/data/tha4/*.pt
+/data/tha4/*.safetensors
+/data/tha4/tha4-models/
+
+# Python (weight-conversion tooling / reference oracle)
+.venv/
+__pycache__/
+*.pyc
+
+# Generated demo output
+/out/
+*.mp4
+
+# macOS
+.DS_Store

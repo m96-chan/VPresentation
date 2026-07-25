@@ -1,0 +1,21 @@
+[package]
+name = "tha4"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "THA4 character animation engine on the candle fork (Metal-capable)."
+
+[dependencies]
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
+anyhow = { workspace = true }
+
+[features]
+# Metal on by default (Apple Silicon target); build with --no-default-features for CPU.
+default = ["metal"]
+metal = ["candle-core/metal", "candle-nn/metal"]
+
+[[bin]]
+name = "metal-smoke"
+path = "src/bin/metal_smoke.rs"
