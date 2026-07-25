@@ -45,3 +45,4 @@ path = "src/bin/serve.rs"
 [[bin]]
 name = "bench-student"
 path = "src/bin/bench_student.rs"
+
