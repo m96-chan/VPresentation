@@ -15,6 +15,12 @@ pub mod warp;
 pub fn best_device() -> candle_core::Result<Device> {
     #[cfg(feature = "metal")]
     {
+        // candle-metal recycles pooled buffers that may still be referenced by
+        // in-flight GPU kernels, which corrupts large graphs (THA4 upscaler).
+        // Disable reuse for correctness before any Metal buffer is allocated.
+        if std::env::var_os("CANDLE_METAL_NO_BUFFER_REUSE").is_none() {
+            std::env::set_var("CANDLE_METAL_NO_BUFFER_REUSE", "1");
+        }
         match Device::new_metal(0) {
             Ok(dev) => return Ok(dev),
             Err(e) => {

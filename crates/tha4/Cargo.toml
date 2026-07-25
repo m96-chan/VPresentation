@@ -24,3 +24,11 @@ path = "src/bin/metal_smoke.rs"
 [[bin]]
 name = "validate-onnx"
 path = "src/bin/validate_onnx.rs"
+
+[[bin]]
+name = "diff-devices"
+path = "src/bin/diff_devices.rs"
+
+
+
+
