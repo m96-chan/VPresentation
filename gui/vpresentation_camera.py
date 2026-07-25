@@ -39,13 +39,19 @@ from tha4.mocap.mediapipe_face_pose import MediaPipeFacePose  # noqa: E402
 
 
 class Engine:
-    """Persistent Rust serve process: pose (45 floats) -> rendered RGBA PNG."""
+    """Persistent Rust serve process: pose (45 floats) -> rendered RGBA PNG.
 
-    def __init__(self, char_dir: str):
-        char_png = str(Path(char_dir) / "character.png")
+    Student mode (fast, ~2.8fps) needs a distilled character dir. Teacher mode
+    (slow, ~8s/frame) poses any preprocessed 512 image (e.g. char.png)."""
+
+    def __init__(self, char_dir=None, teacher_image=None):
+        if teacher_image:
+            cmd = [str(SERVE_BIN), teacher_image]  # teacher: poses arbitrary image
+        else:
+            char_png = str(Path(char_dir) / "character.png")
+            cmd = [str(SERVE_BIN), char_png, "--student", char_dir]
         self.proc = subprocess.Popen(
-            [str(SERVE_BIN), char_png, "--student", char_dir],
-            cwd=str(REPO), stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
+            cmd, cwd=str(REPO), stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
         )
         ready = self.proc.stdout.readline().strip()
         if not ready.startswith("READY"):
@@ -84,7 +90,13 @@ def composite_on_bg(path, bg=(30, 30, 40)):
 
 
 def main():
-    char_dir = sys.argv[1] if len(sys.argv) > 1 else str(REPO / "data/character_models/lambda_00")
+    args = sys.argv[1:]
+    teacher_image = None
+    if "--teacher" in args:
+        i = args.index("--teacher")
+        teacher_image = args[i + 1]
+        del args[i:i + 2]
+    char_dir = args[0] if args else str(REPO / "data/character_models/lambda_00")
     if not SERVE_BIN.exists():
         sys.exit("build engine: cargo build --release -p tha4 --bin serve")
     if not MODEL.exists():
@@ -105,8 +117,12 @@ def main():
     if not cap.isOpened():
         sys.exit("cannot open webcam (grant camera permission to the terminal)")
 
-    engine = Engine(char_dir)
-    print(f"[camera] engine on {engine.device}; look at the camera. ESC/q to quit.")
+    if teacher_image:
+        engine = Engine(teacher_image=teacher_image)
+        print(f"[camera] TEACHER mode ({teacher_image}) on {engine.device} — ~8s/frame, be patient.")
+    else:
+        engine = Engine(char_dir=char_dir)
+        print(f"[camera] engine on {engine.device}; look at the camera. ESC/q to quit.")
 
     last_pose = [0.0] * 45
     t_start = time.time()
