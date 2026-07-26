@@ -1,158 +1,207 @@
 # VPresentation
 
-**一枚の2次元イラストで、VTuberプレゼンテーションを。**
+English | [日本語](README.ja.md)
 
-VPresentation は、キャラクターイラスト1枚とスライド資料（PPTX / PDF）を用意するだけで、
-VTuber がプレゼンをしているかのような配信映像を作れるツールです。
-[Talking Head Anime 4 (THA4)](https://github.com/pkhungurn/talking-head-anime-4-demo) をベースに
-イラストを動かし、スライド送りに合わせた演出を加えます。
+[![Status](https://img.shields.io/badge/status-early%20WIP-orange)](#-status)
+[![License](https://img.shields.io/badge/license-TBD-lightgrey)](#-license)
+[![Built with THA4](https://img.shields.io/badge/built%20with-Talking%20Head%20Anime%204-ff69b4)](https://github.com/pkhungurn/talking-head-anime-4-demo)
 
-> ⚠️ **Status: 構想・開発初期段階 (WIP)**
-> 本 README は目指すゴールと設計方針を示すものです。記載機能の多くは未実装です。
+**A VTuber presentation, from a single 2D character illustration.**
 
----
+VPresentation turns one character illustration and a slide deck (PPTX / PDF)
+into a livestream-style video where the character appears to be presenting
+the slides. It's built on
+[Talking Head Anime 4 (THA4)](https://github.com/pkhungurn/talking-head-anime-4-demo)
+to animate the illustration, synced to slide-advance effects.
 
-## 🎯 コンセプト
-
-- **絵は一枚でいい** — Live2D のような多レイヤー・リギング作業は不要。正面向きの立ち絵1枚から動きを生成します。
-- **資料はそのまま** — 普段使っている PowerPoint (PPTX) / PDF をそのまま読み込めます。
-- **配信にそのまま乗る** — OBS などの配信ソフトに取り込める出力（ウィンドウ / 仮想カメラ / クロマキー）を想定。
-
----
-
-## ✨ 主な機能（目標）
-
-### キャラクター表示
-- [ ] 2次元イラスト1枚からの表情・頭部モーション生成（THA4 ベース）
-- [ ] まばたき・呼吸などのアイドルモーション（自動ループ）
-- [ ] マイク入力・TTS 音声に合わせたリップシンク
-- [ ] 表情プリセット（笑顔 / 驚き / 困り など）の手動・自動切り替え
-
-### スライド連携
-- [ ] **PPTX** の読み込みとページ描画
-- [ ] **PDF** の読み込みとページ描画
-- [ ] スライド送り／戻し（キーボード・ショートカット・外部トリガー）
-- [ ] スピーカーノートの参照
-
-### スライド送りアニメーション
-配信映えを重視し、複数の遷移演出を切り替え可能にする予定：
-- [ ] フェード / スライドイン / ズーム / フリップ / ページめくり など
-- [ ] キャラクターのリアクション連動（次スライドで手を挙げる等）
-- [ ] 遷移タイミングとイージングのカスタマイズ
-
-### 配信・出力
-- [ ] クロマキー（透過背景）出力
-- [ ] 仮想カメラ出力 / ウィンドウキャプチャ対応
-- [ ] レイアウトプリセット（フルスライド＋ワイプ、ハーフ＆ハーフ 等）
+> ⚠️ **Status: early concept / development.** This README describes the
+> intended goal and design. Most listed features are not implemented yet.
 
 ---
 
-## 🏗️ アーキテクチャ（想定）
+## Table of contents
+
+- [Concept](#-concept)
+- [Features (goals)](#-features-goals)
+- [Architecture (planned)](#️-architecture-planned)
+- [Tech stack (under discussion)](#-tech-stack-under-discussion)
+- [Requirements (tentative)](#-requirements-tentative)
+- [Usage (planned)](#-usage-planned)
+- [Development (THA4 engine)](#️-development-tha4-engine)
+- [Roadmap](#️-roadmap)
+- [Credits](#-credits--related-projects)
+- [License](#-license)
+
+---
+
+## 🎯 Concept
+
+- **One illustration is enough** — no Live2D-style multi-layer rigging.
+  Motion is generated from a single front-facing standing illustration.
+- **Slides as-is** — load the PowerPoint (PPTX) / PDF deck you already have,
+  directly.
+- **Made for streaming** — output is designed to drop straight into OBS and
+  similar tools (window capture / virtual camera / chroma key).
+
+---
+
+## ✨ Features (goals)
+
+### Character display
+- [x] Expression / head motion generation from a single 2D illustration
+      (THA4-based)
+- [x] Idle motion — auto-looping blink / breathing
+- [ ] Lip-sync driven by microphone input / TTS audio
+- [ ] Manual and automatic switching between expression presets
+      (smile / surprise / trouble, etc.)
+
+### Slide integration
+- [ ] **PPTX** loading and page rendering
+- [ ] **PDF** loading and page rendering
+- [ ] Slide advance / back (keyboard shortcuts, external triggers)
+- [ ] Speaker notes lookup
+
+### Slide-advance animation
+Streaming impact matters, so multiple switchable transition styles are
+planned:
+- [ ] Fade / slide-in / zoom / flip / page-turn, etc.
+- [ ] Character reactions synced to the transition (e.g. raising a hand on
+      the next slide)
+- [ ] Customizable transition timing and easing
+
+### Streaming & output
+- [ ] Chroma-key (transparent background) output
+- [ ] Virtual camera output / window capture support
+- [ ] Layout presets (full slide + picture-in-picture, half-and-half, etc.)
+
+---
+
+## 🏗️ Architecture (planned)
 
 ```
 ┌──────────────┐    ┌─────────────────┐    ┌──────────────────┐
-│  2D イラスト   │──▶ │  THA4 推論エンジン │──▶ │                  │
-│  (PNG 1枚)    │    │  (表情/頭部/口)   │    │                  │
-└──────────────┘    └─────────────────┘    │   コンポジター     │
-                                            │  (キャラ + スライド │──▶ 配信出力
-┌──────────────┐    ┌─────────────────┐    │   + 遷移演出)      │   (OBS / 仮想カメラ)
-│ PPTX / PDF   │──▶ │  スライドレンダラ  │──▶ │                  │
+│ 2D Illustr.  │──▶ │  THA4 inference  │──▶ │                  │
+│  (1 PNG)     │    │ (expr/head/mouth)│    │                  │
+└──────────────┘    └─────────────────┘    │    Compositor    │
+                                            │ (char + slide +  │──▶ Stream output
+┌──────────────┐    ┌─────────────────┐    │   transitions)   │   (OBS / virtual cam)
+│ PPTX / PDF   │──▶ │  Slide renderer  │──▶ │                  │
 └──────────────┘    └─────────────────┘    └──────────────────┘
                             ▲
                     ┌───────┴────────┐
-                    │  操作 UI /      │
-                    │  ショートカット   │
+                    │  Control UI /   │
+                    │   shortcuts     │
                     └────────────────┘
 ```
 
-主要コンポーネント：
+Key components:
 
-| コンポーネント | 役割 |
+| Component | Role |
 | --- | --- |
-| THA4 推論エンジン | 立ち絵からポーズパラメータで表情・頭部・口を生成 |
-| スライドレンダラ | PPTX / PDF を画像フレームに変換 |
-| コンポジター | キャラ映像とスライドを合成し、遷移アニメーションを適用 |
-| 操作 UI | スライド送り・表情切り替えなどの操作 |
-| 出力層 | クロマキー / 仮想カメラ / ウィンドウ出力 |
+| THA4 inference engine | Generates expression/head/mouth motion from pose parameters on the standing illustration |
+| Slide renderer | Converts PPTX / PDF pages into image frames |
+| Compositor | Merges character video with slides and applies transition animation |
+| Control UI | Slide advance, expression switching, and other operator controls |
+| Output layer | Chroma-key / virtual camera / window output |
 
 ---
 
-## 🔧 技術スタック（検討中）
+## 🔧 Tech stack (under discussion)
 
-- **キャラクターアニメーション**: Talking Head Anime 4 (THA4) — PyTorch
-- **スライド変換**: PPTX（`python-pptx` もしくは LibreOffice 経由でのレンダリング）、PDF（`pdf2image` / `PyMuPDF` 等）
-- **合成・出力**: 検討中（描画エンジン・仮想カメラ連携）
+- **Character animation**: Talking Head Anime 4 (THA4) — PyTorch
+- **Slide conversion**: PPTX (`python-pptx` or rendering via LibreOffice), PDF
+  (`pdf2image` / `PyMuPDF`, etc.)
+- **Compositing & output**: TBD (rendering engine, virtual camera
+  integration)
 
-> スタックは確定ではありません。THA4 の要件（GPU 推論など）を踏まえて調整します。
-
----
-
-## 📦 動作要件（暫定）
-
-- THA4 の推論には GPU（NVIDIA / CUDA 環境）を推奨
-- モデルウェイトは THA4 の配布元から別途取得が必要
-- 詳細は実装が進み次第、追記します
+> The stack isn't finalized yet. It will be tuned against THA4's
+> requirements (e.g. GPU inference).
 
 ---
 
-## 🚀 使い方（予定）
+## 📦 Requirements (tentative)
 
-> 未実装のため、以下は完成イメージです。
-
-1. キャラクターの立ち絵（正面向き・透過 PNG）を用意する
-2. プレゼン資料（`.pptx` / `.pdf`）を用意する
-3. アプリを起動し、イラストと資料を読み込む
-4. スライド送り演出・レイアウトを選ぶ
-5. 出力を OBS 等に取り込んで配信を開始する
+- A GPU (NVIDIA/CUDA or Apple Silicon/Metal) is recommended for THA4
+  inference
+- Model weights must be fetched separately from THA4's distribution (see
+  [`tools/fetch_weights.sh`](tools/fetch_weights.sh))
+- More detail will be added as the implementation matures
 
 ---
 
-## 🛠️ 開発（THA4 エンジン）
+## 🚀 Usage (planned)
 
-キャラクターアニメーションは、[m96-chan/candle](https://github.com/m96-chan/candle)
-フォーク（`avatacam` ブランチ）上に **Rust + candle + Metal** で実装する。
-Apple Silicon (Metal) / NVIDIA (CUDA) / CPU を同一コードで狙う。
+> Not implemented yet — the following is the target experience.
+
+1. Prepare a standing character illustration (front-facing, transparent PNG)
+2. Prepare your presentation deck (`.pptx` / `.pdf`)
+3. Launch the app and load the illustration and deck
+4. Choose a slide-transition style and layout
+5. Feed the output into OBS (or similar) and go live
+
+---
+
+## 🛠️ Development (THA4 engine)
+
+Character animation is implemented in **Rust + candle + Metal** on the
+[m96-chan/candle](https://github.com/m96-chan/candle) fork (`avatacam`
+branch), targeting Apple Silicon (Metal), NVIDIA (CUDA), and CPU from the
+same codebase.
 
 ```bash
-# 1. candle フォークを取得（submodule）
+# 1. Fetch the candle fork (submodule)
 git submodule update --init --recursive
 
-# 2. THA4 の学習済みモデルを取得（~610MB, CC BY-NC 4.0。リポジトリには含めない）
+# 2. Fetch THA4's pretrained weights (~610MB, CC BY-NC 4.0; not vendored in this repo)
 ./tools/fetch_weights.sh
 
-# 3. candle + Metal が動くことを確認（Phase 0 スモークテスト）
+# 3. Confirm candle + Metal work (Phase 0 smoke test)
 cargo run -p tha4 --bin metal-smoke
 cargo test -p tha4
 ```
 
-### 実装フェーズ（issue #4）
-- [x] **Phase 0**: 基盤 — candle フォーク接続 / Metal 実行確認 / weights 取得
-- [ ] **Phase 1**: `grid_sample` / `affine_grid` op を candle フォークへ追加
-- [ ] **Phase 2**: 5 ネットワークを移植（eyebrow_decomposer → eyebrow_morphing_combiner → face_morpher → body_morpher → upscaler）
-- [ ] **Phase 3**: パイプライン結合 + `char.png` 前処理 + まばたき/呼吸ループ → アニメーション
+### Implementation phases (issue #4)
+- [x] **Phase 0**: Foundation — wire up the candle fork / confirm Metal
+      execution / fetch weights
+- [x] **Phase 1**: Add `grid_sample` / `affine_grid` ops to the candle fork
+- [x] **Phase 2**: Port the 5 networks (eyebrow_decomposer →
+      eyebrow_morphing_combiner → face_morpher → body_morpher → upscaler)
+- [x] **Phase 3**: Wire up the pipeline + `char.png` preprocessing +
+      blink/breathing loop → animation
 
-> THA4 の general poser は 5 つのネットワークからなり、`grid_sample` による
-> ワープを用いる。candle には未実装のため段階的に移植する。
+> THA4's general poser is made of 5 networks and relies on `grid_sample`
+> warping, which candle doesn't implement — it's being ported incrementally.
 
-## 🗺️ ロードマップ
-
-1. **PoC** — THA4 で立ち絵を動かし、画面表示する
-2. **スライド読み込み** — PDF → PPTX の順でページ描画に対応
-3. **合成・遷移** — キャラ＋スライドの合成と基本的な遷移演出
-4. **操作性** — スライド送り操作・表情切り替えの UI
-5. **配信出力** — クロマキー / 仮想カメラ対応
-6. **演出拡充** — 遷移アニメーションのバリエーション追加
-
----
-
-## 🙏 クレジット / 関連プロジェクト
-
-- [Talking Head Anime 4 (THA4)](https://github.com/pkhungurn/talking-head-anime-4-demo) — キャラクターアニメーションの基盤
-
-THA4 のライセンス・利用条件は配布元に従ってください。
+**Real-time (student) path**: the general poser above can pose *any* image
+but is too slow to stream (a few fps at best). Real-time playback needs a
+per-character **distilled student model** — see
+[`DISTILL.md`](DISTILL.md) for the full distillation procedure (NVIDIA GPU
+required) that turns a teacher-posed illustration into a ~25fps student.
 
 ---
 
-## 📄 ライセンス
+## 🗺️ Roadmap
 
-未定（決定次第記載）。THA4 など依存プロジェクトのライセンスにも留意すること。
+1. **PoC** — animate a standing illustration with THA4 and display it
+2. **Slide loading** — PDF, then PPTX, page rendering
+3. **Compositing & transitions** — merge character + slides with basic
+   transition effects
+4. **Operability** — slide-advance controls, expression-switching UI
+5. **Streaming output** — chroma-key / virtual camera support
+6. **More effects** — additional transition-animation variety
+
+---
+
+## 🙏 Credits / related projects
+
+- [Talking Head Anime 4 (THA4)](https://github.com/pkhungurn/talking-head-anime-4-demo)
+  — the foundation for character animation
+
+Please follow THA4's license and usage terms from its distributor.
+
+---
+
+## 📄 License
+
+TBD (to be decided). Be mindful of the licenses of upstream dependencies
+(THA4, slide rendering, etc.) when one is chosen.
