@@ -3,7 +3,7 @@
 English | [日本語](README.ja.md)
 
 [![Status](https://img.shields.io/badge/status-early%20WIP-orange)](#-status)
-[![License](https://img.shields.io/badge/license-TBD-lightgrey)](#-license)
+[![License](https://img.shields.io/badge/license-MIT%20(code)-blue)](LICENSE)
 [![Built with THA4](https://img.shields.io/badge/built%20with-Talking%20Head%20Anime%204-ff69b4)](https://github.com/pkhungurn/talking-head-anime-4-demo)
 
 **A VTuber presentation, from a single 2D character illustration.**
@@ -203,5 +203,13 @@ Please follow THA4's license and usage terms from its distributor.
 
 ## 📄 License
 
-TBD (to be decided). Be mindful of the licenses of upstream dependencies
-(THA4, slide rendering, etc.) when one is chosen.
+The VPresentation source code is [MIT licensed](LICENSE).
+
+**This does not cover THA4's pretrained model weights.** They're
+distributed separately by the THA4 author under **CC BY-NC 4.0
+(non-commercial)** — see [`tools/fetch_weights.sh`](tools/fetch_weights.sh).
+Any use of this project that relies on those weights (directly via the
+teacher, or via a per-character model distilled from them, see
+[`DISTILL.md`](DISTILL.md)) is bound by that non-commercial restriction,
+regardless of this repo's own MIT license. Commercial use would require
+separate arrangement with THA4's author.
