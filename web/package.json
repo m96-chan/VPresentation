@@ -1,0 +1,30 @@
+{
+  "name": "vpresentation-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-first RSS -> VoxShot TTS -> THA4 student renderer for VPresentation",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "onnxruntime-node": "^1.27.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.5"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "onnxruntime-web": "^1.23.0",
+    "pdfjs-dist": "^6.2.108",
+    "voxshot": "^0.2.0"
+  }
+}
