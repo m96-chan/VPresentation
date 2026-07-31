@@ -425,11 +425,12 @@ async function ensureRunning(): Promise<LivePoseEngine> {
  * Which way the presenter should idle.
  *
  * Standing bottom-right puts the deck on their left, so they should face left.
- * Yaw is `head_y` (`head_x` is pitch), and positive yaw is the viewer's left —
- * per THA4's own mocap converters, not guessed from renders.
+ * Yaw is `head_y` (`head_x` is pitch), and **positive yaw is the viewer's
+ * right** — measured by sweeping the model and tracking the face's feature
+ * centroid, which moves monotonically across all five samples.
  */
 function headingBias(): number {
-  return ui.side.value === "right" ? 0.45 : -0.45;
+  return ui.side.value === "right" ? -0.45 : 0.45;
 }
 
 let debugOverlay = false;
@@ -451,10 +452,10 @@ function drawDebug(): void {
   const yaw = pose[POSE_INDEX.head_y]!;
   const lines = [
     `corner    bottom-${ui.side.value}   bias ${headingBias().toFixed(2)}`,
-    `yaw       ${v("head_y")}  (head_y, + = viewer LEFT)`,
+    `yaw       ${v("head_y")}  (head_y, + = viewer RIGHT)`,
     `pitch     ${v("head_x")}  (head_x, + = chin UP)`,
     `gaze yaw  ${v("iris_rotation_y")}  gaze pitch ${v("iris_rotation_x")}`,
-    `facing    ${yaw > 0.02 ? "◀ LEFT" : yaw < -0.02 ? "RIGHT ▶" : "centre"}`,
+    `facing    ${yaw < -0.02 ? "◀ LEFT" : yaw > 0.02 ? "RIGHT ▶" : "centre"}`,
   ];
 
   ctx.save();

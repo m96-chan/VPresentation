@@ -25,17 +25,27 @@
  * the pose vector (`tha4/mocap/mediapipe_face_pose_converter_00.py`):
  *
  *   head_x  <- euler[0] about X  -> PITCH     positive = chin up
- *   head_y  <- euler[1] about Y  -> YAW       positive = viewer's left
+ *   head_y  <- euler[1] about Y  -> YAW       positive = viewer's RIGHT
  *   neck_z  <- euler[2] about Z  -> ROLL
  *   body_y  <- the same value as head_y  -> yaw
  *   body_z  <- the same value as neck_z  -> roll
  *
  *   iris_rotation_x <- EYE_LOOK_UP - EYE_LOOK_DOWN   -> gaze PITCH, positive = up
- *   iris_rotation_y <- EYE_LOOK_IN / OUT             -> gaze YAW,   positive = viewer's left
+ *   iris_rotation_y <- EYE_LOOK_IN / OUT             -> gaze YAW
  *
- * Head and gaze therefore share their signs. Fields here are named for what
- * they *do* (`yaw`, `pitch`, `roll`) so the confusion cannot recur; the mapping
- * onto axis-named slots happens once, in `SLOTS`.
+ * Head and gaze share their signs, because both converters derive them from the
+ * same physical direction. Fields here are named for what they *do* (`yaw`,
+ * `pitch`, `roll`) so an axis name cannot be mistaken for a direction again;
+ * the mapping onto slots happens once, in `SLOTS`.
+ *
+ * The yaw *direction* was settled by sweeping the model and tracking the
+ * face's feature centroid, which moves monotonically across all five samples
+ * (58.6 -> 65.6 px as head_y goes -1 -> +1). Cross-correlation was tried first
+ * and its shift sign was read backwards; a centroid has no such ambiguity.
+ *
+ * Note `breathing` barely moves this model — 0 to 1 changes the silhouette by
+ * 0.19%. What reads as a living body here is `body_z`, a left/right bend worth
+ * an 11 px centroid swing, so the idle breath drives that too.
  */
 import { POSE_INDEX, POSE_RANGES, type Pose } from "../pose/params.js";
 import type { EmotionName, WeightedEmotion } from "../emotion/emotion.js";
@@ -159,7 +169,8 @@ export function swayAt(time: number, seed: number): BodyMotion {
     pitch: fractalNoise(time, 0.37, seed + 202) * 0.06,
     roll: fractalNoise(time, 0.29, seed + 303) * 0.14,
     bodyYaw: fractalNoise(time, 0.23, seed + 404) * 0.08,
-    bodyRoll: fractalNoise(time, 0.19, seed + 505) * 0.1,
+    // The strongest body channel on this model, so it carries the idle life.
+    bodyRoll: fractalNoise(time, 0.19, seed + 505) * 0.16,
     gazeYaw: 0,
     gazePitch: 0,
   };
@@ -302,6 +313,14 @@ export interface BodyMotionInput {
   readonly speech: number;
   /** Signed speech accent at this time, -1..1. */
   readonly accent: number;
+  /**
+   * Breath phase, 0..1.
+   *
+   * THA4's own `breathing` parameter is nearly invisible on a distilled
+   * student — 0 to 1 moves the silhouette by 0.19% — so the breath is also
+   * expressed as a slow body lean, which the model does render.
+   */
+  readonly breath?: number;
   /** Seconds of continuous silence up to this frame; drives the thinking gaze. */
   readonly silence?: number;
   readonly emotions?: readonly WeightedEmotion[];
@@ -373,6 +392,12 @@ export function bodyMotionAt(input: BodyMotionInput): BodyMotion {
     bodyYaw += input.speech * 0.12 * gestureScale;
     bodyRoll += input.speech * 0.07 * scatter * gestureScale;
   }
+
+  // Breath, as a body lean. Small: it should read as being alive, not as
+  // swaying. Centred on zero so it does not bias the posture.
+  // Defaults to mid-breath, so an unsupplied phase contributes nothing rather
+  // than pinning the body to full exhale.
+  bodyRoll += ((input.breath ?? 0.5) - 0.5) * 0.14;
 
   // 3. Emotion posture.
   if (postureScale !== 0 && input.emotions) {

@@ -59,6 +59,11 @@ Entries say **why** a change was needed. What changed is in the diff.
   are now named `yaw` / `pitch` / `roll` so the confusion cannot recur, with the
   mapping onto axis-named slots in one place.
 
+- **Breath is expressed as a body lean.** THA4's `breathing` parameter barely
+  moves a distilled student — sweeping it from 0 to 1 changes the silhouette by
+  0.19% — so the idle breath also drives `body_z`, a left/right bend worth an
+  11 px centroid swing, which the model does render.
+
 ### Notes
 
 - **WebGPU is required.** ORT Web's WASM EP has no `GridSample` kernel at all,

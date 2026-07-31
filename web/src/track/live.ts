@@ -28,7 +28,7 @@ import {
   blendEmotions,
   type EmotionSpan,
 } from "../emotion/emotion.js";
-import { applyIdle, type IdleOptions } from "../idle/idle.js";
+import { applyIdle, breathingAmount, type IdleOptions } from "../idle/idle.js";
 import {
   BodyMotionIntegrator,
   SpeechDynamicsTracker,
@@ -213,6 +213,7 @@ export class LivePoseEngine {
           // so an idling character reads as thinking rather than as merely
           // having no audio loaded.
           silence: Math.max(0, time - this.lastVoiced),
+          breath: breathingAmount(time),
           emotions: active,
           ...this.options.body,
         },
