@@ -219,6 +219,48 @@ export function orientationAt(time: number, seed: number): number {
   return 0;
 }
 
+// --- thinking glances -------------------------------------------------------
+
+const GLANCE_LENGTH = 1.7;
+const GLANCE_MIN_GAP = 2.6;
+const GLANCE_MAX_GAP = 6.5;
+
+/**
+ * How engaged the "thinking" look is, 0..1.
+ *
+ * Silence *enables* glances rather than being one. Ramping in and holding left
+ * the character staring away with its eyes pegged for as long as nothing was
+ * said — vacant rather than thoughtful. A real pause is a glance away and a
+ * return, so this pulses on a held schedule like the blink does, and each
+ * glance eases in and out.
+ */
+export interface Glance {
+  /** Envelope, 0..1. */
+  readonly amount: number;
+  /** Which way this glance goes; constant for its whole duration. */
+  readonly side: -1 | 1;
+}
+
+export function thinkingGlanceAt(seed: number, silence: number, preferred: -1 | 1 = 1): Glance {
+  const none: Glance = { amount: 0, side: preferred };
+  // Long enough that a gap between words does not trigger one.
+  if (silence < 0.4) return none;
+  const since = silence - 0.4;
+
+  let start = hash01(0, seed + 5501) * GLANCE_MAX_GAP;
+  for (let k = 1; start <= since + GLANCE_LENGTH; k++) {
+    if (start <= since && since < start + GLANCE_LENGTH) {
+      const phase = (since - start) / GLANCE_LENGTH;
+      // The direction is drawn per glance, not per unit of time: taken from a
+      // clock it could flip halfway through one, which reads as a flinch.
+      const side = hash01(k, seed + 4441) < 0.72 ? preferred : (-preferred as -1 | 1);
+      return { amount: 0.5 - 0.5 * Math.cos(2 * Math.PI * phase), side };
+    }
+    start += GLANCE_LENGTH + GLANCE_MIN_GAP + hash01(k, seed + 5501) * (GLANCE_MAX_GAP - GLANCE_MIN_GAP);
+  }
+  return none;
+}
+
 // --- speech dynamics -------------------------------------------------------
 
 export interface SpeechDynamic {
@@ -375,9 +417,10 @@ export function bodyMotionAt(input: BodyMotionInput): BodyMotion {
   yaw += heading * 0.62;
   bodyYaw += heading * 0.34;
   roll += heading * 0.1;
-  // Eyes lead the head — sprung faster downstream, so they arrive first and the
-  // head follows. Same sign: gaze yaw and head yaw agree.
-  let gazeYaw = heading * 0.85;
+  // Eyes lead the head, slightly in amplitude and much more in response
+  // (they are sprung far faster downstream). Sized to leave room for the
+  // glance below without either of them reaching the limit.
+  let gazeYaw = heading * 0.66;
 
   // 2. Speech gesture. Amplitudes are pre-spring targets, so they are larger
   //    than the travel you actually see.
@@ -412,20 +455,22 @@ export function bodyMotionAt(input: BodyMotionInput): BodyMotion {
     }
   }
 
-  // 4. Thinking gaze — pauses only. While speaking, pitch sits near neutral.
-  const thinking = smoothstep(clamp01(((input.silence ?? 0) - 0.3) / 0.7));
+  // 4. Thinking glance — occasional, during a pause, not a held stare.
+  //    Follows the heading bias: a fixed preference pulled against it and left
+  //    a corner-placed presenter staring straight ahead.
+  const preferred: -1 | 1 = bias === 0 ? 1 : bias > 0 ? 1 : -1;
+  const glance = thinkingGlanceAt(input.seed, input.silence ?? 0, preferred);
   let gazePitch = 0;
-  if (thinking > 0) {
-    // Follows the heading bias; a fixed preference pulled against it and left a
-    // corner-placed presenter staring straight ahead.
-    const preferred = bias === 0 ? 1 : Math.sign(bias);
-    const side =
-      hash01(Math.floor(input.time / 3.5), input.seed + 4441) < 0.72 ? preferred : -preferred;
-    pitch += thinking * 0.2;
-    yaw += thinking * 0.26 * side;
-    roll += thinking * 0.1 * side;
-    gazeYaw += thinking * 0.55 * side;
-    gazePitch += thinking * 0.5;
+  if (glance.amount > 0) {
+    const { amount, side } = glance;
+    pitch += amount * 0.18;
+    yaw += amount * 0.18 * side;
+    roll += amount * 0.09 * side;
+    // The eyes go further than the head, as they do in a real glance — and
+    // kept clear of the limit, because a gaze sitting on ±1 looks strained and
+    // a saturated value says nothing about where it was going.
+    gazeYaw += amount * 0.3 * side;
+    gazePitch += amount * 0.45;
   }
 
   // Gaze follows the head's nod, same sign.

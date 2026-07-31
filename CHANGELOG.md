@@ -59,6 +59,13 @@ Entries say **why** a change was needed. What changed is in the diff.
   are now named `yaw` / `pitch` / `roll` so the confusion cannot recur, with the
   mapping onto axis-named slots in one place.
 
+- **The thinking gaze is an occasional glance, not a held stare.** It ramped in
+  after a moment's silence and never decayed, so with nothing being said the
+  character sat with its chin up and its eyes pegged at the limit for as long as
+  the silence lasted — vacant rather than thoughtful. Glances now occur on a
+  held schedule, ease in and out, keep one direction for their whole duration,
+  and stay clear of the limit. Over five minutes of silence the character is
+  glancing 15% of the time and never saturates.
 - **Breath is expressed as a body lean.** THA4's `breathing` parameter barely
   moves a distilled student — sweeping it from 0 to 1 changes the silhouette by
   0.19% — so the idle breath also drives `body_z`, a left/right bend worth an

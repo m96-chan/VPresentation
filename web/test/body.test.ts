@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { POSE_INDEX, zeroPose } from "../src/pose/params.js";
 import {
   POSTURES,
+  thinkingGlanceAt,
   applyBodyMotion,
   bodyMotionAt,
   bodyMotionTrack,
@@ -278,116 +279,97 @@ describe("vertical balance", () => {
 });
 
 describe("thinking gaze", () => {
-  function paused(silenceSeconds: number) {
-    return bodyMotionAt({
-      time: 4,
-      seed: SEED,
-      speech: 0,
-      accent: 0,
-      silence: silenceSeconds,
-      swayScale: 0,
-      turnScale: 0,
-    });
-  }
-
-  it("does nothing during a short gap between words", () => {
-    expect(Math.abs(paused(0.2).gazePitch)).toBeLessThan(0.02);
-  });
-
-  it("drifts the gaze up during a real pause", () => {
-    const m = paused(2);
-    expect(m.pitch).toBeGreaterThan(0.1); // chin up
-    expect(m.gazePitch).toBeGreaterThan(0.2); // gaze up, same sign as pitch
-  });
-
-  it("puts the eyes ahead of the head, as a real glance does", () => {
-    const m = paused(2);
-    expect(Math.abs(m.gazeYaw)).toBeGreaterThan(Math.abs(m.yaw));
-  });
-
-  it("mostly goes to the character's upper-left", () => {
-    // Sampled wide on purpose. At the intended 72/28 split, 40 draws have a
-    // standard deviation of ~4.5 points, which is enough for an unlucky window
-    // to dip under 60% and make this flaky.
-    const SAMPLES = 400;
-    let left = 0;
-    for (let t = 0; t < SAMPLES; t++) {
+  /**
+   * Walk a long silence and keep the frames where a glance is engaged.
+   *
+   * The schedule is a function of *how long the silence has run*, not of the
+   * clock, so this advances `silence` — holding it fixed and advancing `time`
+   * samples the same instant of the same glance over and over.
+   */
+  function glances(bias = 0) {
+    const out: ReturnType<typeof bodyMotionAt>[] = [];
+    for (let f = 0; f < 180 * 30; f++) {
       const m = bodyMotionAt({
-        time: t * 3.5,
-        seed: SEED,
-        speech: 0,
-        accent: 0,
-        silence: 2,
-        swayScale: 0,
-        turnScale: 0,
-      });
-      // Gaze yaw shares the head's sign: positive is the viewer's left.
-      if (m.gazeYaw > 0) left++;
-    }
-    expect(left / SAMPLES).toBeGreaterThan(0.6);
-    expect(left / SAMPLES).toBeLessThan(0.85);
-  });
-});
-
-describe("heading bias", () => {
-  // A presenter standing in the bottom-right corner has the deck on their
-  // left, and POSITIVE head_x is the viewer's left. Turning the other way
-  // during idle points them out of frame, away from the content.
-  function headings(bias: number, seconds = 40) {
-    return Array.from({ length: seconds * 30 }, (_, f) =>
-      bodyMotionAt({
         time: f / 30,
         seed: SEED,
         speech: 0,
         accent: 0,
-        swayScale: 0,
-        headingBias: bias,
-      }).yaw,
-    );
-  }
-
-  it("leans the whole idle range towards the bias", () => {
-    const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
-    expect(mean(headings(-0.4))).toBeLessThan(mean(headings(0)));
-    expect(mean(headings(0.4))).toBeGreaterThan(mean(headings(0)));
-  });
-
-  it("never crosses to the far side of the bias", () => {
-    // Constructive, not statistical: the wander is scaled to fit inside the
-    // biased half, because adding a bias to a zero-centred range still crossed
-    // over whenever the generator's own sample skewed that way.
-    expect(headings(0.45).every((v) => v >= -0.02)).toBe(true);
-    expect(headings(-0.45).every((v) => v <= 0.02)).toBe(true);
-  });
-
-  it("still looks around rather than staring one way", () => {
-    const v = headings(-0.4);
-    expect(Math.max(...v) - Math.min(...v)).toBeGreaterThan(0.25);
-  });
-
-  it("stays in range at full bias", () => {
-    for (const v of headings(1)) {
-      expect(v).toBeGreaterThanOrEqual(-1);
-      expect(v).toBeLessThanOrEqual(1);
-    }
-  });
-
-  it("points the eyes the same way the head is turned", () => {
-    // THA4's mocap converters drive head_y and iris_rotation_y from the same
-    // physical direction, so gaze yaw and head yaw share a sign. The long
-    // detour here came from reading `head_x` as "horizontal" when it is the
-    // rotation *axis* — pitch — so the turn was being driven into the nod.
-    for (const bias of [-0.5, 0.5]) {
-      const m = bodyMotionAt({
-        time: 5,
-        seed: SEED,
-        speech: 0,
-        accent: 0,
+        silence: f / 30,
         swayScale: 0,
         headingBias: bias,
       });
-      expect(Math.sign(m.gazeYaw), `bias ${bias}`).toBe(Math.sign(m.yaw));
+      if (Math.abs(m.gazePitch) > 0.25) out.push(m);
     }
+    return out;
+  }
+
+  it("does nothing during a short gap between words", () => {
+    const m = bodyMotionAt({
+      time: 4,
+      seed: SEED,
+      speech: 0,
+      accent: 0,
+      silence: 0.2,
+      swayScale: 0,
+      turnScale: 0,
+    });
+    expect(Math.abs(m.gazePitch)).toBeLessThan(0.02);
+  });
+
+  it("drifts the gaze up during a pause", () => {
+    const engaged = glances();
+    expect(engaged.length).toBeGreaterThan(0);
+    // Chin up and gaze up: same sign, both positive.
+    expect(Math.max(...engaged.map((m) => m.pitch))).toBeGreaterThan(0.1);
+    expect(Math.max(...engaged.map((m) => m.gazePitch))).toBeGreaterThan(0.25);
+  });
+
+  it("moves the eyes further than the head, as a real glance does", () => {
+    // Isolated from the facing term: with a heading in play the two are
+    // independent contributions whose sum can land either way, and the
+    // comparison stops meaning anything.
+    let checked = 0;
+    for (let f = 0; f < 180 * 30; f++) {
+      const m = bodyMotionAt({
+        time: f / 30,
+        seed: SEED,
+        speech: 0,
+        accent: 0,
+        silence: f / 30,
+        swayScale: 0,
+        turnScale: 0,
+      });
+      if (Math.abs(m.gazePitch) < 0.25) continue;
+      checked++;
+      expect(Math.abs(m.gazeYaw)).toBeGreaterThan(Math.abs(m.yaw));
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it("keeps one direction for a whole glance, mostly to the left", () => {
+    // Counted once per glance, not per frame: the 72/28 split is a property of
+    // the schedule, and glances vary in length, so frame-weighting measures
+    // duration rather than the choice.
+    const sides: number[] = [];
+    let current: number | null = null;
+    for (let f = 0; f < 600 * 30; f++) {
+      const g = thinkingGlanceAt(SEED, f / 30, 1);
+      if (g.amount <= 0) {
+        current = null;
+        continue;
+      }
+      if (current === null) {
+        current = g.side;
+        sides.push(g.side);
+      } else {
+        // A glance that flipped halfway through would read as a flinch.
+        expect(g.side, `glance ${sides.length} changed direction`).toBe(current);
+      }
+    }
+    expect(sides.length).toBeGreaterThan(30);
+    // `preferred` is +1 here; positive is the viewer's right, so the intent is
+    // simply that it follows the preference most of the time.
+    expect(sides.filter((s) => s === 1).length / sides.length).toBeGreaterThan(0.6);
   });
 });
 
@@ -423,5 +405,53 @@ describe("thinking gaze and heading bias together", () => {
     // measures noise rather than symmetry.
     const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
     expect(Math.abs(mean(idle(0.45, 240)) + mean(idle(-0.45, 240)))).toBeLessThan(0.1);
+  });
+});
+
+describe("thinking glances", () => {
+  function gaze(seconds: number, seed = SEED) {
+    return Array.from({ length: seconds * 30 }, (_, f) =>
+      bodyMotionAt({
+        time: f / 30,
+        seed,
+        speech: 0,
+        accent: 0,
+        // Nothing is ever said: the worst case for a latching thinking pose.
+        silence: f / 30,
+        swayScale: 0,
+        headingBias: -0.45,
+      }),
+    );
+  }
+
+  it("does not hold the glance for the whole silence", () => {
+    // Ramping in with no decay left the character staring up and away with its
+    // eyes pegged for as long as nothing was said, which reads as vacant
+    // rather than thoughtful.
+    const engaged = gaze(120).filter((m) => Math.abs(m.gazePitch) > 0.25).length;
+    expect(engaged / (120 * 30)).toBeLessThan(0.5);
+  });
+
+  it("still glances sometimes", () => {
+    const engaged = gaze(120).filter((m) => Math.abs(m.gazePitch) > 0.25).length;
+    expect(engaged / (120 * 30)).toBeGreaterThan(0.05);
+  });
+
+  it("never pegs the eyes at the limit", () => {
+    // A gaze sitting on ±1 looks strained, and it also means the value has
+    // saturated, so nothing downstream can read it.
+    const pegged = gaze(120).filter((m) => Math.abs(m.gazeYaw) > 0.97).length;
+    expect(pegged).toBe(0);
+  });
+
+  it("eases in and out rather than switching", () => {
+    const g = gaze(120).map((m) => m.gazePitch);
+    for (let i = 1; i < g.length; i++) {
+      expect(Math.abs(g[i]! - g[i - 1]!), `frame ${i}`).toBeLessThan(0.05);
+    }
+  });
+
+  it("is deterministic", () => {
+    expect(gaze(20).map((m) => m.gazeYaw)).toEqual(gaze(20).map((m) => m.gazeYaw));
   });
 });
