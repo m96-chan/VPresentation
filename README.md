@@ -450,6 +450,12 @@ Please follow THA4's license and usage terms from its distributor.
 
 ---
 
+## 📝 Changelog
+
+User-observable changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
 ## 📄 License
 
 The VPresentation source code is [MIT licensed](LICENSE).
