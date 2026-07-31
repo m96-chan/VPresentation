@@ -60,7 +60,7 @@ describe("bodyMotionTrack", () => {
     });
   }
 
-  const channels = ["headX", "headY", "neckZ", "bodyY", "bodyZ"] as const;
+  const channels = ["yaw", "pitch", "roll", "bodyYaw", "bodyRoll"] as const;
 
   function stats(track: ReturnType<typeof bodyMotionTrack>, key: (typeof channels)[number]) {
     const v = track.map((m) => m[key]);
@@ -86,11 +86,11 @@ describe("bodyMotionTrack", () => {
   it("still moves — smoothing must not flatten the performance", () => {
     const track = bodyMotionTrack(bursty(90), 30);
     // Horizontal is the expressive axis and has to carry the performance.
-    expect(stats(track, "headX").range).toBeGreaterThan(0.08);
+    expect(stats(track, "yaw").range).toBeGreaterThan(0.08);
     // Vertical deliberately stays quiet while speaking: looking up and down a
     // lot reads as restless, and the nods alone should not swing the head.
-    expect(stats(track, "headY").range).toBeGreaterThan(0.02);
-    expect(stats(track, "headY").range).toBeLessThan(0.12);
+    expect(stats(track, "pitch").range).toBeGreaterThan(0.02);
+    expect(stats(track, "pitch").range).toBeLessThan(0.12);
   });
 
   it("keeps everything in range", () => {
@@ -133,7 +133,7 @@ describe("bodyMotionTrack", () => {
       accent: f < 10 ? 0 : Math.max(0, 0.88 ** (f - 10)),
       swayScale: 0,
     }));
-    const y = bodyMotionTrack(input, 30).map((m) => m.headY);
+    const y = bodyMotionTrack(input, 30).map((m) => m.pitch);
     // Barely moved on the accent frame itself...
     expect(Math.abs(y[10]!)).toBeLessThan(0.02);
     // ...but clearly moved a few frames later.

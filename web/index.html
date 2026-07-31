@@ -124,7 +124,10 @@
         </div>
         <p class="hint">Presenting starts the idle loop if it is not already running, then reads each page and advances. The character keeps breathing and blinking between pages.</p>
 
-        <button id="clean" type="button">🖥 Clean output (for OBS)</button>
+        <div class="row">
+          <button id="clean" type="button">🖥 Clean output</button>
+          <button id="debug" type="button">🐞 Debug overlay</button>
+        </div>
         <p class="hint">Hides everything but the canvas, so a window or browser-source capture is clean. Recording is left to OBS: a full-length reading is hours long, which no in-page recorder survives. Pick the <em>character&nbsp;only</em> layout for a transparent feed to chroma-key.</p>
       </fieldset>
 

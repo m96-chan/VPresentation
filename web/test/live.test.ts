@@ -58,8 +58,8 @@ describe("idle without any audio", () => {
 
   it("keeps turning to look around", () => {
     const engine = new LivePoseEngine({ seed: SEED });
-    const headX = walk(engine, 15, POSE_INDEX.head_x);
-    expect(Math.max(...headX) - Math.min(...headX)).toBeGreaterThan(0.3);
+    const yaw = walk(engine, 15, POSE_INDEX.head_y);
+    expect(Math.max(...yaw) - Math.min(...yaw)).toBeGreaterThan(0.3);
   });
 
   it("keeps the mouth shut", () => {
@@ -69,9 +69,9 @@ describe("idle without any audio", () => {
 
   it("drifts into the thinking gaze, since silence is what it is doing", () => {
     const engine = new LivePoseEngine({ seed: SEED });
-    const iris = walk(engine, 6, POSE_INDEX.iris_rotation_y);
-    // Negative iris_rotation_y is up.
-    expect(Math.min(...iris)).toBeLessThan(-0.2);
+    const gazePitch = walk(engine, 6, POSE_INDEX.iris_rotation_x);
+    // iris_rotation_x is the gaze's *pitch*, positive up.
+    expect(Math.max(...gazePitch)).toBeGreaterThan(0.2);
   });
 });
 
@@ -127,8 +127,8 @@ describe("speech layered into the idle", () => {
 
 describe("clock handling", () => {
   it("is deterministic when stepped at a fixed rate", () => {
-    const a = walk(new LivePoseEngine({ seed: 5 }), 6, POSE_INDEX.head_x);
-    const b = walk(new LivePoseEngine({ seed: 5 }), 6, POSE_INDEX.head_x);
+    const a = walk(new LivePoseEngine({ seed: 5 }), 6, POSE_INDEX.head_y);
+    const b = walk(new LivePoseEngine({ seed: 5 }), 6, POSE_INDEX.head_y);
     expect(a).toEqual(b);
   });
 
@@ -137,9 +137,9 @@ describe("clock handling", () => {
     // stepped with a variable dt. The springs are implicit, so this must not
     // blow up or snap.
     const engine = new LivePoseEngine({ seed: SEED });
-    let prev = engine.frameAt(0)[POSE_INDEX.head_x]!;
+    let prev = engine.frameAt(0)[POSE_INDEX.head_y]!;
     for (const t of [0.3, 0.35, 0.9, 0.95, 2.4, 2.45, 5.0]) {
-      const v = engine.frameAt(t)[POSE_INDEX.head_x]!;
+      const v = engine.frameAt(t)[POSE_INDEX.head_y]!;
       expect(Number.isFinite(v)).toBe(true);
       expect(Math.abs(v)).toBeLessThanOrEqual(1);
       prev = v;

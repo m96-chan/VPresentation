@@ -14,31 +14,47 @@
  * looking up and down reads as restless — and only lifts during pauses, where
  * it reads as thought.
  *
- * Sign conventions, measured from rendered sweeps rather than assumed
- * (`scripts/sweep.ts`). The rule is simple once measured, and was got wrong
- * twice by reading the sweeps by eye:
+ * **THA4's pose names are rotation axes, not directions.** `head_x` is
+ * rotation *about* x, which is pitch; `head_y` is yaw. Reading them as "the x
+ * position of the head" gets every axis wrong, which is what happened here —
+ * turns were driven into the pitch axis, so the character nodded up and down
+ * instead of looking left and right, and flipping the sign of the "turn"
+ * changed nothing about where it faced.
  *
- *   head_x            positive -> viewer's LEFT
- *   head_y            positive -> chin UP
- *   iris_rotation_x   positive -> viewer's RIGHT
- *   iris_rotation_y   positive -> DOWN
+ * The authority is THA4's own mocap converters, which map a tracked face onto
+ * the pose vector (`tha4/mocap/mediapipe_face_pose_converter_00.py`):
  *
- * **Both iris axes are inverted relative to their head counterpart.** So a
- * gaze that follows the head has to negate it; using the same sign points the
- * eyes the opposite way from the face.
+ *   head_x  <- euler[0] about X  -> PITCH     positive = chin up
+ *   head_y  <- euler[1] about Y  -> YAW       positive = viewer's left
+ *   neck_z  <- euler[2] about Z  -> ROLL
+ *   body_y  <- the same value as head_y  -> yaw
+ *   body_z  <- the same value as neck_z  -> roll
+ *
+ *   iris_rotation_x <- EYE_LOOK_UP - EYE_LOOK_DOWN   -> gaze PITCH, positive = up
+ *   iris_rotation_y <- EYE_LOOK_IN / OUT             -> gaze YAW,   positive = viewer's left
+ *
+ * Head and gaze therefore share their signs. Fields here are named for what
+ * they *do* (`yaw`, `pitch`, `roll`) so the confusion cannot recur; the mapping
+ * onto axis-named slots happens once, in `SLOTS`.
  */
 import { POSE_INDEX, POSE_RANGES, type Pose } from "../pose/params.js";
 import type { EmotionName, WeightedEmotion } from "../emotion/emotion.js";
 
 export interface BodyMotion {
-  readonly headX: number;
-  readonly headY: number;
-  readonly neckZ: number;
-  readonly bodyY: number;
-  readonly bodyZ: number;
-  /** Eye direction, slots 37..38. Part of "where the character is looking". */
-  readonly irisX: number;
-  readonly irisY: number;
+  /** Head turn. Positive is the viewer's left. Maps to `head_y`. */
+  readonly yaw: number;
+  /** Head nod. Positive raises the chin. Maps to `head_x`. */
+  readonly pitch: number;
+  /** Head tilt. Maps to `neck_z`. */
+  readonly roll: number;
+  /** Torso turn, following the head. Maps to `body_y`. */
+  readonly bodyYaw: number;
+  /** Torso tilt. Maps to `body_z`. */
+  readonly bodyRoll: number;
+  /** Gaze turn, same sign as {@link yaw}. Maps to `iris_rotation_y`. */
+  readonly gazeYaw: number;
+  /** Gaze nod, same sign as {@link pitch}. Maps to `iris_rotation_x`. */
+  readonly gazePitch: number;
 }
 
 // --- noise -----------------------------------------------------------------
@@ -137,15 +153,15 @@ export class Spring {
  */
 export function swayAt(time: number, seed: number): BodyMotion {
   return {
-    headX: fractalNoise(time, 0.45, seed + 101) * 0.14,
-    // Vertical is kept much smaller than horizontal: left/right is the
-    // expressive axis, up/down mostly wants to sit near neutral.
-    headY: fractalNoise(time, 0.37, seed + 202) * 0.06,
-    neckZ: fractalNoise(time, 0.29, seed + 303) * 0.14,
-    bodyY: fractalNoise(time, 0.23, seed + 404) * 0.08,
-    bodyZ: fractalNoise(time, 0.19, seed + 505) * 0.1,
-    irisX: 0,
-    irisY: 0,
+    yaw: fractalNoise(time, 0.45, seed + 101) * 0.14,
+    // Pitch is kept much smaller than yaw: left/right is the expressive axis,
+    // up/down mostly wants to sit near neutral.
+    pitch: fractalNoise(time, 0.37, seed + 202) * 0.06,
+    roll: fractalNoise(time, 0.29, seed + 303) * 0.14,
+    bodyYaw: fractalNoise(time, 0.23, seed + 404) * 0.08,
+    bodyRoll: fractalNoise(time, 0.19, seed + 505) * 0.1,
+    gazeYaw: 0,
+    gazePitch: 0,
   };
 }
 
@@ -269,12 +285,12 @@ export function speechDynamics(openness: readonly number[], fps: number): Speech
  */
 export const POSTURES: Readonly<Record<EmotionName, Partial<BodyMotion>>> = Object.freeze({
   neutral: {},
-  happy: { headY: 0.12, neckZ: 0.1, bodyZ: 0.06 },
-  sad: { headY: -0.24, neckZ: -0.12, bodyY: -0.08 },
-  angry: { headY: -0.14, bodyZ: -0.06 },
-  surprised: { headY: 0.26, bodyY: 0.1 },
-  serious: { headY: -0.06, neckZ: -0.04 },
-  troubled: { headY: -0.12, neckZ: 0.14 },
+  happy: { pitch: 0.1, roll: 0.1, bodyRoll: 0.06 },
+  sad: { pitch: -0.12, roll: -0.12, bodyYaw: -0.06 },
+  angry: { pitch: -0.07, bodyRoll: -0.06 },
+  surprised: { pitch: 0.2, bodyYaw: 0.1 },
+  serious: { pitch: -0.03, roll: -0.04 },
+  troubled: { pitch: -0.06, roll: 0.14 },
 });
 
 // --- combination -----------------------------------------------------------
@@ -322,110 +338,100 @@ export function bodyMotionAt(input: BodyMotionInput): BodyMotion {
   const turnScale = input.turnScale ?? 1;
 
   const sway = swayAt(input.time, input.seed);
+  let yaw = sway.yaw * swayScale;
+  let pitch = sway.pitch * swayScale;
+  let roll = sway.roll * swayScale;
+  let bodyYaw = sway.bodyYaw * swayScale;
+  let bodyRoll = sway.bodyRoll * swayScale;
 
-  let headX = sway.headX * swayScale;
-  let headY = sway.headY * swayScale;
-  let neckZ = sway.neckZ * swayScale;
-  let bodyY = sway.bodyY * swayScale;
-  let bodyZ = sway.bodyZ * swayScale;
-
-  // Facing. The head does most of the turn, the torso follows part way, and
-  // the neck adds a little counter-tilt so it is not a rigid pivot.
+  // 1. Facing. The head does most of the turn, the torso follows part way, and
+  //    the neck adds a little counter-tilt so it is not a rigid pivot.
   const bias = clamp1(input.headingBias ?? 0);
   // The wander is scaled to fit *within* the biased side rather than added on
-  // top of it. Adding a bias to a zero-centred range still crossed to the far
-  // side whenever the generator's own sample happened to skew that way — a
-  // presenter in the right-hand corner would turn away from the deck for a
-  // stretch, which is exactly what looked wrong.
+  // top of it: adding a bias to a zero-centred range still crossed to the far
+  // side whenever the generator's own sample skewed that way.
   const raw = input.heading ?? orientationAt(input.time, input.seed);
-  const spread = (1 - Math.abs(bias)) * 0.9;
-  const heading = clamp1(bias + raw * spread) * turnScale;
-  headX += heading * 0.62;
-  bodyY += heading * 0.34;
-  neckZ += heading * 0.1;
+  const heading = clamp1(bias + raw * ((1 - Math.abs(bias)) * 0.9)) * turnScale;
 
-  // Eyes lead the head. They are sprung faster downstream, so they arrive at
-  // the new heading first and the head follows — the standard way to make a
-  // turn read as intentional rather than mechanical.
-  //
-  // Negated: iris_rotation_x runs the opposite way to head_x, so matching the
-  // signs made the character look away from wherever its head was turning.
-  let irisX = -heading * 0.85;
+  yaw += heading * 0.62;
+  bodyYaw += heading * 0.34;
+  roll += heading * 0.1;
+  // Eyes lead the head — sprung faster downstream, so they arrive first and the
+  // head follows. Same sign: gaze yaw and head yaw agree.
+  let gazeYaw = heading * 0.85;
 
+  // 2. Speech gesture. Amplitudes are pre-spring targets, so they are larger
+  //    than the travel you actually see.
   if (gestureScale !== 0) {
-    // A nod on each accent, with a little lateral scatter so repeated accents
-    // do not look like a metronome.
-    // Amplitudes are pre-spring targets; the spring attenuates them, so these
-    // are larger than the travel you actually see.
     const scatter = valueNoise(input.time, 0.9, input.seed + 606);
-    headY -= input.accent * 0.24 * gestureScale;
-    headX += input.accent * 0.22 * scatter * gestureScale;
-    neckZ += input.accent * 0.16 * scatter * gestureScale;
+    // `accent` is signed, so this nods down on an onset and recovers upward
+    // instead of holding the head down for the whole utterance.
+    pitch -= input.accent * 0.24 * gestureScale;
+    yaw += input.accent * 0.22 * scatter * gestureScale;
+    roll += input.accent * 0.16 * scatter * gestureScale;
 
-    // Sustained speech leans the body slightly forward and steadies it.
-    bodyY += input.speech * 0.12 * gestureScale;
-    bodyZ += input.speech * 0.07 * scatter * gestureScale;
+    bodyYaw += input.speech * 0.12 * gestureScale;
+    bodyRoll += input.speech * 0.07 * scatter * gestureScale;
   }
 
+  // 3. Emotion posture.
   if (postureScale !== 0 && input.emotions) {
     for (const { emotion, weight } of input.emotions) {
       const posture = POSTURES[emotion];
       const w = weight * postureScale;
-      headX += (posture.headX ?? 0) * w;
-      headY += (posture.headY ?? 0) * w;
-      neckZ += (posture.neckZ ?? 0) * w;
-      bodyY += (posture.bodyY ?? 0) * w;
-      bodyZ += (posture.bodyZ ?? 0) * w;
+      yaw += (posture.yaw ?? 0) * w;
+      pitch += (posture.pitch ?? 0) * w;
+      roll += (posture.roll ?? 0) * w;
+      bodyYaw += (posture.bodyYaw ?? 0) * w;
+      bodyRoll += (posture.bodyRoll ?? 0) * w;
     }
   }
 
-  // Thinking gaze — applied last, on top of posture rather than instead of it,
-  // so a sad character still holds its posture while it pauses. During a pause
-  // the gaze drifts up and to one side, the universal "working it out" tell;
-  // while actually speaking the vertical axis stays near neutral.
+  // 4. Thinking gaze — pauses only. While speaking, pitch sits near neutral.
   const thinking = smoothstep(clamp01(((input.silence ?? 0) - 0.3) / 0.7));
-  let irisY = 0;
+  let gazePitch = 0;
   if (thinking > 0) {
-    // Mostly one way, but not always, so a long pause is not a fixed stare.
-    //
-    // It follows the heading bias when there is one. Left as a fixed
-    // preference it pulled against the bias instead: a presenter in the
-    // left-hand corner had a constant +0.26 of "thinking to the left" cancelling
-    // its lean towards the deck, and ended up staring straight ahead.
+    // Follows the heading bias; a fixed preference pulled against it and left a
+    // corner-placed presenter staring straight ahead.
     const preferred = bias === 0 ? 1 : Math.sign(bias);
     const side =
       hash01(Math.floor(input.time / 3.5), input.seed + 4441) < 0.72 ? preferred : -preferred;
-    headY += thinking * 0.2;
-    headX += thinking * 0.26 * side;
-    neckZ += thinking * 0.1 * side;
-    // Negated for the same reason as above.
-    irisX -= thinking * 0.55 * side;
-    irisY -= thinking * 0.5;
+    pitch += thinking * 0.2;
+    yaw += thinking * 0.26 * side;
+    roll += thinking * 0.1 * side;
+    gazeYaw += thinking * 0.55 * side;
+    gazePitch += thinking * 0.5;
   }
 
-  // Same inversion on the vertical axis: negative iris_rotation_y looks up,
-  // while positive head_y raises the chin.
-  irisY -= headY * 0.6;
+  // Gaze follows the head's nod, same sign.
+  gazePitch += pitch * 0.6;
 
   return {
-    headX: clamp1(headX),
-    headY: clamp1(headY),
-    neckZ: clamp1(neckZ),
-    bodyY: clamp1(bodyY),
-    bodyZ: clamp1(bodyZ),
-    irisX: clamp1(irisX),
-    irisY: clamp1(irisY),
+    yaw: clamp1(yaw),
+    pitch: clamp1(pitch),
+    roll: clamp1(roll),
+    bodyYaw: clamp1(bodyYaw),
+    bodyRoll: clamp1(bodyRoll),
+    gazeYaw: clamp1(gazeYaw),
+    gazePitch: clamp1(gazePitch),
   };
 }
 
+/**
+ * The one place semantic names meet THA4's axis-named slots.
+ *
+ * `head_x` is rotation about x — pitch — and `head_y` is yaw. Keeping the
+ * mapping here, rather than spread through the motion code, is what stops the
+ * two being confused again.
+ */
 const SLOTS = [
-  [POSE_INDEX.head_x, "headX"],
-  [POSE_INDEX.head_y, "headY"],
-  [POSE_INDEX.neck_z, "neckZ"],
-  [POSE_INDEX.body_y, "bodyY"],
-  [POSE_INDEX.body_z, "bodyZ"],
-  [POSE_INDEX.iris_rotation_x, "irisX"],
-  [POSE_INDEX.iris_rotation_y, "irisY"],
+  [POSE_INDEX.head_y, "yaw"],
+  [POSE_INDEX.head_x, "pitch"],
+  [POSE_INDEX.neck_z, "roll"],
+  [POSE_INDEX.body_y, "bodyYaw"],
+  [POSE_INDEX.body_z, "bodyRoll"],
+  [POSE_INDEX.iris_rotation_y, "gazeYaw"],
+  [POSE_INDEX.iris_rotation_x, "gazePitch"],
 ] as const;
 
 /**
@@ -437,22 +443,21 @@ const SLOTS = [
  * with a hint of overshoot instead of arriving dead.
  */
 const SPRINGS: Readonly<Record<keyof BodyMotion, { frequency: number; damping: number }>> = {
-  // Turns are the largest moves head_x makes, so it is sprung softly:
-  // a bigger step through a stiffer spring means a harder start.
-  headX: { frequency: 0.85, damping: 0.9 },
-  // head_y takes the nod impulses, so it is the channel that snaps first.
-  // It is deliberately the heaviest of the three head axes.
-  headY: { frequency: 0.85, damping: 0.92 },
-  neckZ: { frequency: 0.9, damping: 0.88 },
-  bodyY: { frequency: 0.6, damping: 0.95 },
-  bodyZ: { frequency: 0.5, damping: 0.95 },
-  // Eyes are near weightless: they snap to a new heading well ahead of the
-  // head, which is what sells the turn as deliberate.
-  irisX: { frequency: 3.2, damping: 0.9 },
-  irisY: { frequency: 2.6, damping: 0.9 },
+  // Turns are the largest moves the head makes, so yaw is sprung softly: a
+  // bigger step through a stiffer spring means a harder start.
+  yaw: { frequency: 0.85, damping: 0.9 },
+  // Pitch takes the nod impulses, so it is the channel that snaps first.
+  pitch: { frequency: 0.85, damping: 0.92 },
+  roll: { frequency: 0.9, damping: 0.88 },
+  bodyYaw: { frequency: 0.6, damping: 0.95 },
+  bodyRoll: { frequency: 0.5, damping: 0.95 },
+  // Eyes are near weightless: they reach a new heading well ahead of the head,
+  // which is what sells the turn as deliberate.
+  gazeYaw: { frequency: 3.2, damping: 0.9 },
+  gazePitch: { frequency: 2.6, damping: 0.9 },
 };
 
-const CHANNELS = ["headX", "headY", "neckZ", "bodyY", "bodyZ", "irisX", "irisY"] as const;
+const CHANNELS = ["yaw", "pitch", "roll", "bodyYaw", "bodyRoll", "gazeYaw", "gazePitch"] as const;
 
 export interface SpringScale {
   /** Multiplies every channel's natural frequency; lower = heavier, smoother. */
@@ -495,13 +500,13 @@ export class BodyMotionIntegrator {
     const target = bodyMotionAt(input);
     const springs = this.springs;
     return {
-      headX: clamp1(springs.headX.step(target.headX, dt)),
-      headY: clamp1(springs.headY.step(target.headY, dt)),
-      neckZ: clamp1(springs.neckZ.step(target.neckZ, dt)),
-      bodyY: clamp1(springs.bodyY.step(target.bodyY, dt)),
-      bodyZ: clamp1(springs.bodyZ.step(target.bodyZ, dt)),
-      irisX: clamp1(springs.irisX.step(target.irisX, dt)),
-      irisY: clamp1(springs.irisY.step(target.irisY, dt)),
+      yaw: clamp1(springs.yaw.step(target.yaw, dt)),
+      pitch: clamp1(springs.pitch.step(target.pitch, dt)),
+      roll: clamp1(springs.roll.step(target.roll, dt)),
+      bodyYaw: clamp1(springs.bodyYaw.step(target.bodyYaw, dt)),
+      bodyRoll: clamp1(springs.bodyRoll.step(target.bodyRoll, dt)),
+      gazeYaw: clamp1(springs.gazeYaw.step(target.gazeYaw, dt)),
+      gazePitch: clamp1(springs.gazePitch.step(target.gazePitch, dt)),
     };
   }
 }

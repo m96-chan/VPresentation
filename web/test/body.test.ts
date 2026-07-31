@@ -17,7 +17,7 @@ describe("swayAt", () => {
   it("stays inside the bipolar range", () => {
     for (let i = 0; i < 3000; i++) {
       const s = swayAt(i / 30, SEED);
-      for (const v of [s.headX, s.headY, s.neckZ, s.bodyY, s.bodyZ]) {
+      for (const v of [s.yaw, s.pitch, s.roll, s.bodyYaw, s.bodyRoll]) {
         expect(v).toBeGreaterThanOrEqual(-1);
         expect(v).toBeLessThanOrEqual(1);
       }
@@ -29,8 +29,8 @@ describe("swayAt", () => {
     // wander layered on top of a held heading.
     for (let i = 0; i < 900; i++) {
       const s = swayAt(i / 30, SEED);
-      expect(Math.abs(s.headX)).toBeLessThan(0.2);
-      expect(Math.abs(s.bodyY)).toBeLessThan(0.12);
+      expect(Math.abs(s.yaw)).toBeLessThan(0.2);
+      expect(Math.abs(s.bodyYaw)).toBeLessThan(0.12);
     }
   });
 
@@ -38,8 +38,8 @@ describe("swayAt", () => {
     let prev = swayAt(0, SEED);
     for (let i = 1; i < 3000; i++) {
       const cur = swayAt(i / 30, SEED);
-      expect(Math.abs(cur.headX - prev.headX)).toBeLessThan(0.06);
-      expect(Math.abs(cur.bodyZ - prev.bodyZ)).toBeLessThan(0.06);
+      expect(Math.abs(cur.yaw - prev.yaw)).toBeLessThan(0.06);
+      expect(Math.abs(cur.bodyRoll - prev.bodyRoll)).toBeLessThan(0.06);
       prev = cur;
     }
   });
@@ -80,13 +80,13 @@ describe("bodyMotionAt", () => {
   it("moves the head when speech accents, and not when silent", () => {
     const silent = bodyMotionAt({ ...still, time: 1 });
     const accented = bodyMotionAt({ ...still, time: 1, speech: 0.9, accent: 0.8 });
-    expect(Math.abs(accented.headY - silent.headY)).toBeGreaterThan(0.05);
+    expect(Math.abs(accented.pitch - silent.pitch)).toBeGreaterThan(0.05);
   });
 
   it("leans with sustained speech level", () => {
     const quiet = bodyMotionAt({ ...still, time: 1, speech: 0 });
     const loud = bodyMotionAt({ ...still, time: 1, speech: 1 });
-    expect(Math.abs(loud.bodyY - quiet.bodyY)).toBeGreaterThan(0.02);
+    expect(Math.abs(loud.bodyYaw - quiet.bodyYaw)).toBeGreaterThan(0.02);
   });
 
   it("keeps everything inside the bipolar range even at full drive", () => {
@@ -98,7 +98,7 @@ describe("bodyMotionAt", () => {
         accent: 1,
         emotions: [{ emotion: "surprised", weight: 1 }],
       });
-      for (const v of [m.headX, m.headY, m.neckZ, m.bodyY, m.bodyZ]) {
+      for (const v of [m.yaw, m.pitch, m.roll, m.bodyYaw, m.bodyRoll]) {
         expect(v).toBeGreaterThanOrEqual(-1);
         expect(v).toBeLessThanOrEqual(1);
       }
@@ -112,13 +112,13 @@ describe("bodyMotionAt", () => {
       time: 1,
       emotions: [{ emotion: "surprised", weight: 1 }],
     });
-    expect(surprised.headY).not.toBeCloseTo(neutral.headY, 3);
+    expect(surprised.pitch).not.toBeCloseTo(neutral.pitch, 3);
   });
 
   it("scales posture by emotion weight", () => {
     const full = bodyMotionAt({ ...still, emotions: [{ emotion: "sad", weight: 1 }] });
     const half = bodyMotionAt({ ...still, emotions: [{ emotion: "sad", weight: 0.5 }] });
-    expect(Math.abs(half.headY - still.speech)).toBeLessThan(Math.abs(full.headY));
+    expect(Math.abs(half.pitch - still.speech)).toBeLessThan(Math.abs(full.pitch));
   });
 
   it("can have its layers disabled independently", () => {
@@ -131,7 +131,7 @@ describe("bodyMotionAt", () => {
       gestureScale: 0,
       turnScale: 0,
     });
-    for (const v of [none.headX, none.headY, none.neckZ, none.bodyY, none.bodyZ]) {
+    for (const v of [none.yaw, none.pitch, none.roll, none.bodyYaw, none.bodyRoll]) {
       expect(v).toBeCloseTo(0, 10); // may be -0, which is still zero
     }
   });
@@ -154,7 +154,7 @@ describe("applyBodyMotion", () => {
 
     expect(pose[POSE_INDEX.mouth_aaa]).toBeCloseTo(0.7, 6);
     expect(pose[POSE_INDEX.breathing]).toBeCloseTo(0.5, 6);
-    expect(pose[POSE_INDEX.head_x]).not.toBe(0);
+    expect(pose[POSE_INDEX.head_y]).not.toBe(0);
   });
 });
 
@@ -204,19 +204,19 @@ describe("turning left and right", () => {
   }
 
   it("uses a serious share of head_x's range, not 15% of it", () => {
-    const xs = track(12).map((m) => m.headX);
+    const xs = track(12).map((m) => m.yaw);
     expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(0.45);
   });
 
   it("turns the torso with the head", () => {
     const t = track(12);
-    const ys = t.map((m) => m.bodyY);
+    const ys = t.map((m) => m.bodyYaw);
     expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.2);
   });
 
   it("keeps the turn smooth despite the heading being a step function", () => {
     const t = track(12);
-    const xs = t.map((m) => m.headX);
+    const xs = t.map((m) => m.yaw);
     const d1 = xs.slice(1).map((x, i) => x - xs[i]!);
     const d2 = d1.slice(1).map((x, i) => x - d1[i]!);
     expect(Math.max(...d2.map(Math.abs))).toBeLessThan(0.02);
@@ -227,7 +227,7 @@ describe("turning left and right", () => {
     const t = track(12);
     let leadFrames = 0;
     for (let i = 1; i < t.length; i++) {
-      if (Math.abs(t[i]!.irisX) > Math.abs(t[i]!.headX)) leadFrames++;
+      if (Math.abs(t[i]!.gazeYaw) > Math.abs(t[i]!.yaw)) leadFrames++;
     }
     expect(leadFrames).toBeGreaterThan(t.length * 0.5);
   });
@@ -246,13 +246,13 @@ describe("vertical balance", () => {
   it("does not hold the head down through an utterance", () => {
     // The first version clamped `accent` to >= 0, so every syllable pushed the
     // head down and nothing ever pushed it back up.
-    const ys = bodyMotionTrack(talking, 30).map((m) => m.headY);
+    const ys = bodyMotionTrack(talking, 30).map((m) => m.pitch);
     const mean = ys.reduce((a, b) => a + b, 0) / ys.length;
     expect(Math.abs(mean)).toBeLessThan(0.05);
   });
 
   it("looks down no more than it looks up", () => {
-    const ys = bodyMotionTrack(talking, 30).map((m) => m.headY);
+    const ys = bodyMotionTrack(talking, 30).map((m) => m.pitch);
     const down = Math.abs(Math.min(...ys));
     const up = Math.max(...ys);
     expect(down).toBeLessThan(up * 2.2);
@@ -269,11 +269,11 @@ describe("vertical balance", () => {
       })),
       30,
     );
-    const span = (k: "headX" | "headY") => {
+    const span = (k: "yaw" | "pitch") => {
       const v = t.map((m) => m[k]);
       return Math.max(...v) - Math.min(...v);
     };
-    expect(span("headY")).toBeLessThan(span("headX") * 0.5);
+    expect(span("pitch")).toBeLessThan(span("yaw") * 0.5);
   });
 });
 
@@ -291,18 +291,18 @@ describe("thinking gaze", () => {
   }
 
   it("does nothing during a short gap between words", () => {
-    expect(Math.abs(paused(0.2).irisY)).toBeLessThan(0.02);
+    expect(Math.abs(paused(0.2).gazePitch)).toBeLessThan(0.02);
   });
 
   it("drifts the gaze up during a real pause", () => {
     const m = paused(2);
-    expect(m.headY).toBeGreaterThan(0.1); // chin up
-    expect(m.irisY).toBeLessThan(-0.2); // negative iris_rotation_y is UP
+    expect(m.pitch).toBeGreaterThan(0.1); // chin up
+    expect(m.gazePitch).toBeGreaterThan(0.2); // gaze up, same sign as pitch
   });
 
   it("puts the eyes ahead of the head, as a real glance does", () => {
     const m = paused(2);
-    expect(Math.abs(m.irisX)).toBeGreaterThan(Math.abs(m.headX));
+    expect(Math.abs(m.gazeYaw)).toBeGreaterThan(Math.abs(m.yaw));
   });
 
   it("mostly goes to the character's upper-left", () => {
@@ -321,9 +321,8 @@ describe("thinking gaze", () => {
         swayScale: 0,
         turnScale: 0,
       });
-      // Positive iris_rotation_x is the viewer's RIGHT, so looking left is
-      // a negative value.
-      if (m.irisX < 0) left++;
+      // Gaze yaw shares the head's sign: positive is the viewer's left.
+      if (m.gazeYaw > 0) left++;
     }
     expect(left / SAMPLES).toBeGreaterThan(0.6);
     expect(left / SAMPLES).toBeLessThan(0.85);
@@ -343,7 +342,7 @@ describe("heading bias", () => {
         accent: 0,
         swayScale: 0,
         headingBias: bias,
-      }).headX,
+      }).yaw,
     );
   }
 
@@ -374,10 +373,10 @@ describe("heading bias", () => {
   });
 
   it("points the eyes the same way the head is turned", () => {
-    // iris_rotation_x runs OPPOSITE to head_x, so "same direction on screen"
-    // means opposite signs. Matching the signs instead made the character look
-    // away from wherever its head was turning, which is what showed up on
-    // screen as the gaze still facing right in the right-hand corner.
+    // THA4's mocap converters drive head_y and iris_rotation_y from the same
+    // physical direction, so gaze yaw and head yaw share a sign. The long
+    // detour here came from reading `head_x` as "horizontal" when it is the
+    // rotation *axis* — pitch — so the turn was being driven into the nod.
     for (const bias of [-0.5, 0.5]) {
       const m = bodyMotionAt({
         time: 5,
@@ -387,7 +386,7 @@ describe("heading bias", () => {
         swayScale: 0,
         headingBias: bias,
       });
-      expect(Math.sign(m.irisX), `bias ${bias}`).toBe(-Math.sign(m.headX));
+      expect(Math.sign(m.gazeYaw), `bias ${bias}`).toBe(Math.sign(m.yaw));
     }
   });
 });
@@ -404,7 +403,7 @@ describe("thinking gaze and heading bias together", () => {
         silence: 5,
         swayScale: 0,
         headingBias: bias,
-      }).headX,
+      }).yaw,
     );
   }
 

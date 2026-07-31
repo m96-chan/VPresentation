@@ -22,6 +22,7 @@ import {
 import { FocusCamera } from "./slides/focus.js";
 import { pageTextToScript } from "./slides/script.js";
 import { Compositor } from "./render/compositor.js";
+import { POSE_INDEX } from "./pose/params.js";
 import type { LayoutName } from "./render/layout.js";
 import { IMAGE_SIZE } from "./render/image.js";
 
@@ -52,6 +53,7 @@ const ui = {
   speakText: $<HTMLButtonElement>("speak-text"),
   realtime: $<HTMLButtonElement>("realtime"),
   clean: $<HTMLButtonElement>("clean"),
+  debug: $<HTMLButtonElement>("debug"),
   log: $<HTMLDivElement>("log"),
   stop: $<HTMLButtonElement>("stop"),
   stage: $<HTMLCanvasElement>("stage"),
@@ -403,6 +405,7 @@ async function ensureRunning(): Promise<LivePoseEngine> {
       applyCamera();
       compositor!.setCharacter(rgba);
       compositor!.draw();
+      drawDebug();
       // The overlay comes down on the first *drawn* frame, not when loading
       // finishes — that is the moment there is actually something to look at.
       if (ui.loading.hidden === false) setLoading(null);
@@ -421,12 +424,48 @@ async function ensureRunning(): Promise<LivePoseEngine> {
 /**
  * Which way the presenter should idle.
  *
- * Standing bottom-right puts the deck on their left, so they should face left
- * — and POSITIVE head_x is the viewer's left (measured, not assumed). Getting
- * this backwards pointed the presenter out of frame, away from the deck.
+ * Standing bottom-right puts the deck on their left, so they should face left.
+ * Yaw is `head_y` (`head_x` is pitch), and positive yaw is the viewer's left —
+ * per THA4's own mocap converters, not guessed from renders.
  */
 function headingBias(): number {
   return ui.side.value === "right" ? 0.45 : -0.45;
+}
+
+let debugOverlay = false;
+
+/**
+ * Draw the numbers that decide where the character is looking.
+ *
+ * Added because "it still faces right" and the measured source disagreed, and
+ * there was no way to tell which. Sign conventions here are unintuitive enough
+ * that an argument about them should be settled with values, not impressions.
+ */
+function drawDebug(): void {
+  if (!debugOverlay || !compositor || !engine) return;
+  const ctx = ui.stage.getContext("2d");
+  if (!ctx) return;
+
+  const pose = engine.frameAt(audioContext ? audioContext.currentTime - clockOrigin : 0);
+  const v = (name: keyof typeof POSE_INDEX) => pose[POSE_INDEX[name]]!.toFixed(2).padStart(5);
+  const yaw = pose[POSE_INDEX.head_y]!;
+  const lines = [
+    `corner    bottom-${ui.side.value}   bias ${headingBias().toFixed(2)}`,
+    `yaw       ${v("head_y")}  (head_y, + = viewer LEFT)`,
+    `pitch     ${v("head_x")}  (head_x, + = chin UP)`,
+    `gaze yaw  ${v("iris_rotation_y")}  gaze pitch ${v("iris_rotation_x")}`,
+    `facing    ${yaw > 0.02 ? "◀ LEFT" : yaw < -0.02 ? "RIGHT ▶" : "centre"}`,
+  ];
+
+  ctx.save();
+  ctx.font = "13px ui-monospace, monospace";
+  ctx.textBaseline = "top";
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  ctx.fillRect(8, 8, w, lines.length * 17 + 12);
+  ctx.fillStyle = "#7CFC9B";
+  lines.forEach((l, i) => ctx.fillText(l, 16, 15 + i * 17));
+  ctx.restore();
 }
 
 async function stopRunning(): Promise<void> {
@@ -594,6 +633,10 @@ ui.layout.addEventListener("change", () => {
 ui.realtime.addEventListener("click", () => void presentDeck());
 ui.speakText.addEventListener("click", () => void speakText(ui.script.value));
 ui.stop.addEventListener("click", () => void stopRunning());
+ui.debug.addEventListener("click", () => {
+  debugOverlay = !debugOverlay;
+  log(`debug overlay ${debugOverlay ? "on" : "off"}`);
+});
 ui.clean.addEventListener("click", () => {
   document.body.classList.toggle("clean");
   // Escape is the only way back once the panel is hidden.

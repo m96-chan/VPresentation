@@ -47,6 +47,18 @@ Entries say **why** a change was needed. What changed is in the diff.
   190,000 frames; no `MediaRecorder` or frame buffer survives that. Capture is
   left to OBS, with a clean-output mode and a transparent character feed.
 
+### Fixed
+
+- **Head and gaze axes were swapped.** THA4's pose names are rotation *axes*,
+  not directions: `head_x` is rotation about x, which is pitch, and `head_y` is
+  yaw. Reading them as positions drove turns into the nod axis, so the character
+  looked up and down instead of left and right — and flipping the "turn" sign
+  changed nothing about where it faced. The authority is THA4's own mocap
+  converters, which map a tracked face onto the pose vector; the same applies to
+  `iris_rotation_x` (gaze pitch) and `iris_rotation_y` (gaze yaw). Motion fields
+  are now named `yaw` / `pitch` / `roll` so the confusion cannot recur, with the
+  mapping onto axis-named slots in one place.
+
 ### Notes
 
 - **WebGPU is required.** ORT Web's WASM EP has no `GridSample` kernel at all,
