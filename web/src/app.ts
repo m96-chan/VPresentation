@@ -424,13 +424,29 @@ async function ensureRunning(): Promise<LivePoseEngine> {
 /**
  * Which way the presenter should idle.
  *
- * Standing bottom-right puts the deck on their left, so they should face left.
- * Yaw is `head_y` (`head_x` is pitch), and **positive yaw is the viewer's
- * right** — measured by sweeping the model and tracking the face's feature
- * centroid, which moves monotonically across all five samples.
+ * Standing bottom-right puts the deck on their left, so it should face left.
+ *
+ * Which sign that is has been the hardest thing here to pin down: measuring
+ * renders gave contradictory answers, and until the axis mix-up was fixed
+ * nothing was driving yaw at all, so no observation could discriminate it.
+ * The sign below follows what was actually seen on screen once yaw was live.
+ *
+ * `[` and `]` nudge it at runtime, so it can be settled by looking rather than
+ * by another round of measurement.
  */
+let biasNudge = 0;
+
 function headingBias(): number {
-  return ui.side.value === "right" ? -0.45 : 0.45;
+  const base = ui.side.value === "right" ? 0.45 : -0.45;
+  return Math.max(-1, Math.min(1, base + biasNudge));
+}
+
+/** Re-create the engine so a changed bias takes effect. */
+function restartWithBias(): void {
+  if (!engine) return;
+  void stopRunning()
+    .then(() => ensureRunning())
+    .then(() => showPage(page));
 }
 
 let debugOverlay = false;
@@ -451,11 +467,13 @@ function drawDebug(): void {
   const v = (name: keyof typeof POSE_INDEX) => pose[POSE_INDEX[name]]!.toFixed(2).padStart(5);
   const yaw = pose[POSE_INDEX.head_y]!;
   const lines = [
-    `corner    bottom-${ui.side.value}   bias ${headingBias().toFixed(2)}`,
+    `corner    bottom-${ui.side.value}   bias ${headingBias().toFixed(2)}  ([ / ] to nudge)`,
     `yaw       ${v("head_y")}  (head_y, + = viewer RIGHT)`,
     `pitch     ${v("head_x")}  (head_x, + = chin UP)`,
     `gaze yaw  ${v("iris_rotation_y")}  gaze pitch ${v("iris_rotation_x")}`,
-    `facing    ${yaw < -0.02 ? "◀ LEFT" : yaw > 0.02 ? "RIGHT ▶" : "centre"}`,
+    // No interpretation: the label was wrong for a long time and reading it
+    // instead of the character is how that survived.
+    `deck is   ${ui.side.value === "right" ? "◀ on the left" : "on the right ▶"}`,
   ];
 
   ctx.save();
@@ -645,6 +663,12 @@ ui.clean.addEventListener("click", () => {
 });
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") document.body.classList.remove("clean");
+  // Nudge the facing bias live, so the sign can be settled by looking.
+  if (e.key === "[" || e.key === "]") {
+    biasNudge += e.key === "]" ? 0.15 : -0.15;
+    log(`heading bias -> ${headingBias().toFixed(2)}`);
+    restartWithBias();
+  }
 });
 ui.saveVoice.addEventListener("click", () => void cloneAndSave());
 ui.engine.addEventListener("change", () =>
