@@ -1,0 +1,21 @@
+diff --git a/node_modules/@huggingface/transformers/dist/transformers.web.js b/node_modules/@huggingface/transformers/dist/transformers.web.js
+index bb7b327..42a43ce 100644
+--- a/node_modules/@huggingface/transformers/dist/transformers.web.js
++++ b/node_modules/@huggingface/transformers/dist/transformers.web.js
+@@ -22316,7 +22316,7 @@ var ChatterboxModel = class extends ChatterboxPreTrainedModel {
+   }
+   /** @type {PreTrainedModel['generate']} */
+   async generate(params) {
+-    const { sequences, audio_tokens, speaker_embeddings, speaker_features } = (
++    const { sequences, audio_tokens, speaker_embeddings, speaker_features, past_key_values } = (
+       /** @type {any} */
+       await super.generate({
+         ...params,
+@@ -22337,6 +22337,7 @@ var ChatterboxModel = class extends ChatterboxPreTrainedModel {
+       speaker_features,
+       speaker_embeddings
+     });
++    await past_key_values?.dispose();
+     return waveform;
+   }
+ };

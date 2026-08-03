@@ -49,6 +49,17 @@ Entries say **why** a change was needed. What changed is in the diff.
 
 ### Fixed
 
+- **Reading a deck aloud ran the GPU out of memory.** VRAM grew by 62 MiB per
+  utterance and was never returned, so a long read ended in
+  `vkAllocateMemory failed with VK_ERROR_OUT_OF_DEVICE_MEMORY` mid-sentence —
+  9.5 GB held by the browser when it fell over. The leak is in
+  `@huggingface/transformers`: `ChatterboxModel.generate` passes
+  `return_dict_in_generate`, which is the flag that suppresses the base
+  `generate`'s KV-cache disposal, and then discards the cache. Patched locally
+  with `patch-package` because no published version both supports Chatterbox
+  and frees the cache, so pinning is not a way out. 20 utterances now move VRAM
+  by 8 MiB in total.
+
 - **Head and gaze axes were swapped.** THA4's pose names are rotation *axes*,
   not directions: `head_x` is rotation about x, which is pitch, and `head_y` is
   yaw. Reading them as positions drove turns into the nod axis, so the character
@@ -76,6 +87,9 @@ Entries say **why** a change was needed. What changed is in the diff.
 - **WebGPU is required.** ORT Web's WASM EP has no `GridSample` kernel at all,
   so a browser without WebGPU fails to create the session rather than running
   slowly.
-- Nothing in `web/` has been verified in a real browser yet; the demos in
-  `web/scripts/` run the same modules on native ORT under Node, which cannot
-  exercise rasterisation, compositing or the camera.
+- `web/` now has a first pass on real hardware: headless Chrome on a real
+  WebGPU device (Vulkan, RTX 5090), driven over the DevTools protocol, loads a
+  34-page paper, renders the composite and reads it aloud with Chatterbox. That
+  is what turned up the GPU leak above. The subjective checks in issue #18 —
+  motion quality, camera pacing, lip-sync against real speech — are still
+  open; a screenshot is not a substitute for watching it.

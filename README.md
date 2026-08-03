@@ -220,6 +220,16 @@ A 34-page paper is around 16,000 words — **roughly 106 minutes** of speech, or
 | emotion spans | one per chunk, forever | pruned past the blend horizon |
 | rasterised pages | every page, 11 MB each (377 MB at 34 pages) | LRU of 3, explicitly closed |
 
+That table is all JS-side, and the GPU keeps its own books. Measured in Chrome
+on a real WebGPU device, **VRAM grew by 62 MiB per utterance and never came
+back** — an hour in, the browser held 9.5 GB and `CreateBuffer` failed with
+`VK_ERROR_OUT_OF_DEVICE_MEMORY` mid-sentence. The leak is in
+`@huggingface/transformers`, not here: `ChatterboxModel.generate` asks the base
+`generate` for a dict, which is exactly the flag that makes it *skip* disposing
+the KV cache, and then drops the cache on the floor. It is patched locally
+(see [Running it](#running-it)); with the patch, 20 utterances move VRAM by
+8 MiB total. Issue #20.
+
 **Recording is external.** There is no in-page recorder: an hours-long reading
 is not something MediaRecorder or a frame buffer survives, and the numbers are
 not close. The *Clean output* button hides everything but the canvas for a
@@ -236,12 +246,22 @@ That also removes streaming's failure mode. Playback no longer depends on
 synthesis keeping up: if the next chunk is late, the character carries on
 breathing instead of desynchronising.
 
+### Running it
+
 ```bash
 cd web
-npm install
-npm test          # 115 unit tests
+npm install       # also applies patches/ via patch-package
+npm test          # 283 unit tests
 npm run dev       # then open the printed URL in a WebGPU browser
 ```
+
+`npm install` is not optional in the usual way here: `postinstall` runs
+`patch-package`, which applies the Chatterbox KV-cache fix described above to
+`@huggingface/transformers`. Installing with `--ignore-scripts` gives a build
+that works and then dies of GPU memory an hour into a deck.
+`test/transformers-patch.test.ts` fails if the patch stops being applied —
+including after a dependency bump, since the patch file names its version.
+Delete patch, hook and test together once upstream disposes the cache itself.
 
 ### Decks
 
