@@ -19,6 +19,13 @@ __pycache__/
 /out/
 *.mp4
 
+# Web app (browser renderer)
+node_modules/
+/web/dist/
+# Student ONNX exports — regenerate with tools/export_student.py
+/data/character_models/*/onnx/
+/data/character_models/*/reference/
+
 # macOS
 .DS_Store
 /data/tha4/onnx/
