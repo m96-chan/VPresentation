@@ -27,6 +27,6 @@
     "@huggingface/transformers": "^4.2.0",
     "onnxruntime-web": "^1.23.0",
     "pdfjs-dist": "^6.2.108",
-    "voxshot": "^0.2.0"
+    "voxshot": "^0.3.0"
   }
 }

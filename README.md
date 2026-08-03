@@ -185,8 +185,10 @@ required) that turns a teacher-posed illustration into a ~25fps student.
 
 `web/` is a browser app: load a PDF, and the character reads each page and
 advances through the deck. Speech comes from
-[VoxShot](https://github.com/m96-chan/voxshot) (zero-shot TTS, WebGPU +
-ONNX Runtime Web); the mouth is recovered from its audio.
+[VoxShot](https://github.com/m96-chan/voxshot) **0.3.0** (zero-shot TTS, WebGPU
++ ONNX Runtime Web); the mouth is recovered from its audio. Chatterbox sizes
+its generation cap per chunk from that version on, so a long sentence is not
+cut off mid-word.
 
 A plain-text box is kept alongside it for debugging — useful for exercising
 lip sync without loading a deck.

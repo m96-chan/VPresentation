@@ -41,6 +41,17 @@ Entries say **why** a change was needed. What changed is in the diff.
   opset 20+, so it is baked out as a constant grid — asserted bit-exact against
   stock THA4 by `tools/verify_affine_patch.py` before the export is trusted.
 
+- **VoxShot 0.3.0.** A caret on a `0.x` version pins the minor, so this had to
+  be asked for. What it changes here: the Chatterbox generation cap is now
+  sized per chunk from its length instead of a fixed 256 tokens, so a long
+  sentence is no longer cut off mid-word, and a `synthesize-truncated` event
+  reports it when a cap is hit anyway. It also adds an `AbortSignal` to
+  `speak()` / `stream()` / `play()` and a per-call `expressiveness`; neither is
+  wired up yet (#21), so stopping still only takes effect at a chunk boundary
+  while the render in flight runs to completion. The KV-cache patch below is
+  untouched — that one is on `@huggingface/transformers`, which 0.3.0 still
+  depends on at `^4.2.0`.
+
 ### Removed
 
 - **In-page video recording.** A 34-page paper is roughly 106 minutes, or
