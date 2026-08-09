@@ -68,6 +68,43 @@ done
 > より正確にやるなら `poetry run python -m tha4.app.distiller_ui` の GUI で
 > char_512 を開き、目・口を直接マークする方法もある（THA4 純正）。
 
+### 新しいキャラを足すとき
+
+`tools/preprocess_character.py` の head-frac ヒューリスティクスは、
+チビ寄りの全身立ち絵しか想定していない。バストアップの絵・アホ毛・広がった髪型では
+頭の位置がずれるので、**顔を実測して明示配置する**（`djsaxia` / `ronome` はこの方法）。
+
+THA4 は顔を固定座標で切り出す（眉 `192..320 × 64..192`、顔 `192..320 × 80..208`）ので、
+合わせるべきなのは体ではなく **目線と口の位置**：
+
+```bash
+# 元絵で目の高さ・口の高さ・顔の中心 x を実測して渡す。
+# --keep-alpha は既に切り抜き済みの絵（rembg 不要）
+.venv-distill/bin/python tools/preprocess_character.py ronome.png data/images/ronome_512.png \
+  --keep-alpha --src-cx 1030 --src-eye-y 575 --src-mouth-y 695 \
+  --dst-eye-y 153 --dst-mouth-y 186.5
+```
+
+倍率は目〜口の距離から決まる。`--dst-eye-y` を下げすぎるとアホ毛が上端で切れるので、
+アルファの bbox が上端に触っていないことを確認する。
+
+マスクは 3 つの矩形（左目+眉 / 右目+眉 / 口+顎）で、**眉が上に動く分だけ目の上に余裕を取る**
+（THA4 の distiller-ui doc の推奨）。
+
+### 蒸留前に teacher で確認する（20時間を無駄にしないため）
+
+フレーミングとマスクの間違いは、蒸留を回す前に teacher でポーズを付ければ見える。
+
+```bash
+.venv-distill/bin/python tools/preview_teacher.py \
+  data/images/ronome_512.png out/ronome_teacher.png --mask data/images/ronome_face_mask.png
+```
+
+rest / mask 重ね / 瞬き / あ / い+眉上げ / 首振り / 上向き の 7 コマが出るので、
+**目が閉じきるか・口が開くか・眉が上がるか・首を振っても破綻しないか**を見る。
+teacher は任意画像を動かせるので、これは student の品質の予測ではなく、
+「そもそも正しい問いを投げているか」の確認。数秒で終わる。
+
 ## 4. 蒸留 config を作成（GUIを使わない場合）
 `data/distill_examples/char/config.yaml`（VPresentation 側に作成 → 上記シンボリックリンク経由で
 `third_party/tha4_src/data/distill_examples/char/config.yaml` としても見える）:
