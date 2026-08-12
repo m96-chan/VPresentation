@@ -179,6 +179,22 @@ per-character **distilled student model** — see
 [`DISTILL.md`](DISTILL.md) for the full distillation procedure (NVIDIA GPU
 required) that turns a teacher-posed illustration into a ~25fps student.
 
+Three characters are distilled, and the web app's character menu lists them:
+`char`, `djsaxia` and `ronome`. A student is per-character, so a new
+illustration means another distillation run — around 13 hours on an RTX 5090
+(1M face-morpher examples, then 1.5M for the body morpher).
+
+That cost is why the framing is checked **before** the run rather than after:
+
+```bash
+.venv-distill/bin/python tools/preview_teacher.py \
+  data/images/ronome_512.png out/ronome_teacher.png --mask data/images/ronome_face_mask.png
+```
+
+The two mistakes that waste a run — a head sitting outside THA4's fixed face
+crop, and a face mask that misses an organ — are both visible in a handful of
+teacher-posed frames, and the teacher renders them in seconds.
+
 ---
 
 ## 🗣️ Presenting a deck
