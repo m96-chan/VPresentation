@@ -3,14 +3,19 @@
 
 Webcam -> MediaPipe FaceLandmarker -> THA4 pose converter -> poser -> avatar.
 
-Backends:
-  * CoreML (default, ~20-25 fps): in-process CoreML student model. Needs
-    <char_dir>/coreml/ (build with tools/convert_coreml.py).
+Backends, in the order they are picked:
+  * CoreML (~20-25 fps): in-process CoreML student model. Needs
+    <char_dir>/coreml/ (build with tools/convert_coreml.py). Apple only.
+  * PyTorch/CUDA (~70 fps): the same student in torch. This is the one that
+    works on the distillation box, where CoreML does not exist.
   * Rust serve (--serve): candle engine (student ~2.8fps, or --teacher <img>
     for arbitrary preprocessed characters ~8s/frame).
 
-Run:  .venv/bin/python gui/vpresentation_camera.py [char_dir]
+Run:  .venv-distill/bin/python gui/vpresentation_camera.py [char_dir]
 Keys: ESC / q to quit.
+
+--record <dir> writes the composited frames as they are displayed, so a demo
+can be looked at afterwards instead of only while it is on screen.
 """
 import os
 import sys
@@ -55,6 +60,44 @@ class CoreMLBackend:
 
     def render(self, pose):
         return self._to_rgba(self.poser.pose(pose))  # HWC RGBA uint8
+
+    def close(self):
+        pass
+
+
+class TorchBackend:
+    """In-process PyTorch student poser -> HWC RGBA uint8.
+
+    For the distillation box: CoreML is Apple-only and the Rust engine runs the
+    student at ~2.8fps, but the same student in PyTorch on CUDA renders at
+    ~72fps here — fast enough to check a freshly distilled character on the
+    machine that just distilled it.
+    """
+
+    def __init__(self, char_dir, device="cuda"):
+        import torch
+        from tha4.charmodel.character_model import CharacterModel
+        from tha4.shion.base.image_util import convert_pytorch_image_to_zero_to_one_numpy_image
+
+        self._torch = torch
+        self._to_numpy = convert_pytorch_image_to_zero_to_one_numpy_image
+        self._device = torch.device(device)
+        model = CharacterModel.load(str(Path(char_dir) / "character_model.yaml"))
+        self.poser = model.get_poser(self._device)
+        self.image = model.get_character_image(self._device)
+        self.device = f"torch:{device}"
+
+    def render(self, pose):
+        torch = self._torch
+        pose_t = torch.tensor(pose, dtype=torch.float32, device=self._device)
+        with torch.no_grad():
+            posed = self.poser.pose(self.image, pose_t)[0]
+        # [-1,1] premultiplied -> straight RGBA uint8, which is what the
+        # compositor below expects (same layout the other backends return).
+        rgba = np.clip(self._to_numpy(posed), 0.0, 1.0)
+        rgb, alpha = rgba[:, :, :3], rgba[:, :, 3:4]
+        rgb = np.clip(np.divide(rgb, np.maximum(alpha, 1e-6)), 0.0, 1.0) ** (1 / 2.2)
+        return (np.concatenate([rgb, alpha], axis=2) * 255).astype(np.uint8)
 
     def close(self):
         pass
@@ -156,6 +199,14 @@ class Tracker(threading.Thread):
         self.cap.release()
 
 
+def _cuda_available():
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
 def composite_on_bg(rgba, bg=(40, 30, 30)):
     """HWC RGBA uint8 -> BGR uint8 over a solid background (for cv2 display)."""
     rgb = rgba[:, :, :3].astype(np.float32)
@@ -175,6 +226,13 @@ def main():
         args.remove("--serve")
     if "--teacher" in args:
         i = args.index("--teacher"); teacher_image = args[i + 1]; del args[i:i + 2]; use_serve = True
+    record_dir = None
+    if "--record" in args:
+        i = args.index("--record"); record_dir = args[i + 1]; del args[i:i + 2]
+        os.makedirs(record_dir, exist_ok=True)
+    max_frames = None
+    if "--frames" in args:
+        i = args.index("--frames"); max_frames = int(args[i + 1]); del args[i:i + 2]
     char_dir = args[0] if args else str(REPO / "data/character_models/lambda_00")
 
     if not MODEL.exists():
@@ -188,6 +246,8 @@ def main():
             backend = ServeBackend(teacher_image=teacher_image)  # Rust, ~8s/frame
     elif not use_serve and (Path(char_dir) / "coreml").exists():
         backend = CoreMLBackend(char_dir)
+    elif not use_serve and _cuda_available():
+        backend = TorchBackend(char_dir)
     else:
         if not SERVE_BIN.exists():
             sys.exit("build engine: cargo build --release -p tha4 --bin serve")
@@ -208,16 +268,23 @@ def main():
         sys.exit("cannot open webcam (grant camera permission to the terminal)")
     tracker.start()
 
-    fps_t, fps_n = time.time(), 0
+    fps_t, fps_n, total = time.time(), 0, 0
+    headless = record_dir is not None and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY")
     try:
         while True:
             disp = composite_on_bg(backend.render(tracker.pose()))
-            cv2.imshow("VPresentation (ESC/q)", disp)
+            if not headless:
+                cv2.imshow("VPresentation (ESC/q)", disp)
+            if record_dir:
+                cv2.imwrite(os.path.join(record_dir, f"frame_{total:05d}.png"), disp)
             fps_n += 1
+            total += 1
             if time.time() - fps_t > 2.0:
                 print(f"[camera] {fps_n / (time.time() - fps_t):.1f} fps (render)")
                 fps_t, fps_n = time.time(), 0
-            if cv2.waitKey(1) & 0xFF in (27, ord("q")):
+            if max_frames is not None and total >= max_frames:
+                break
+            if not headless and cv2.waitKey(1) & 0xFF in (27, ord("q")):
                 break
     finally:
         tracker.stop()
