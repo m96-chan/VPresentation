@@ -10,6 +10,21 @@ Entries say **why** a change was needed. What changed is in the diff.
 
 ### Added
 
+- **`ronome` character.** A third distilled student, selectable in the web
+  app alongside `char` and `djsaxia`. Students are per-character, so every new
+  illustration costs its own distillation run.
+- **Explicit face anchors in `tools/preprocess_character.py`.** The existing
+  head-fraction heuristic estimates the head from the character's bounding box,
+  which assumes a chibi-ish full-body illustration; on a bust-up crop it put the
+  face below THA4's fixed face crop. Anchors (`--src-cx` / `--src-eye-y` /
+  `--src-mouth-y`) place the face directly instead, which is what the crop
+  actually cares about. `--keep-alpha` skips background removal for sources that
+  are already cut out, and stops `rembg` being a hard import.
+- **`tools/preview_teacher.py`.** Renders a teacher-posed strip — blink, mouth
+  shapes, raised brows, head turn — from a preprocessed image and its mask. A
+  distillation run is ~13 hours on an RTX 5090, and the mistakes that waste one
+  are visible in these frames beforehand, in seconds.
+
 - **Browser presenter (`web/`).** Load a PDF and a character reads it aloud
   while animating. The app lives in the browser because
   [VoxShot](https://github.com/m96-chan/voxshot) is browser-first (WebGPU +
