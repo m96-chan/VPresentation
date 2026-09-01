@@ -124,6 +124,19 @@ YAML
 
 これで char.png が lambda_00 と同じ **~25fps** で動く。
 
+**蒸留機（Linux + NVIDIA）でそのまま確認する場合**、CoreML 化は不要。
+同じ student を PyTorch/CUDA で回すバックエンドが自動で選ばれる（~52fps）：
+
+```bash
+.venv-distill/bin/python gui/vpresentation_camera.py data/character_models/char
+
+# 後から見返せるようにフレームを保存する（デモの記録用）
+.venv-distill/bin/python gui/vpresentation_camera.py data/character_models/char \
+  --record out/cam --frames 120
+```
+
+蒸留が終わった直後に、その場でカメラバインドして確認できる。
+
 ---
 
 ## メモ

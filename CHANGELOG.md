@@ -32,6 +32,14 @@ Entries say **why** a change was needed. What changed is in the diff.
 - **Compositor with layout presets.** `half`, `picture-in-picture`,
   `slide-only`, and a transparent `character-only` feed for chroma-keying into
   OBS. The presenter stands in a bottom corner and idles facing the deck.
+- **PyTorch/CUDA backend for the webcam puppeteer.**
+  `gui/vpresentation_camera.py` could only run the student through CoreML
+  (Apple-only) or the Rust `serve` engine (~2.8fps) — neither of which suits
+  the machine that does the distilling. The same student in torch renders at
+  ~52fps there, so a freshly distilled character can be checked on the box that
+  just distilled it. Picked automatically when CoreML is absent and CUDA is
+  present. `--record <dir>` and `--frames N` write the composited frames out,
+  so a demo can be reviewed afterwards rather than only while it is on screen.
 
 ### Changed
 
